@@ -1,10 +1,13 @@
 #include "netutils.h"
 #include "utils.h"
+#include <arpa/inet.h>
 #include <assert.h>
+#include <netinet/in.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -38,6 +41,10 @@ typedef struct dfc_conf_struct {
   int server_count;
 } dfc_conf_struct;
 
+int get_dfc_socket(dfc_server_struct*);
+void create_dfc_to_dfs_connections(int*, dfc_conf_struct*);
+bool auth_dfc_to_dfs_connections(int*, dfc_conf_struct*);
+bool setup_dfc_to_dfs_connections(int**, dfc_conf_struct*);
 void read_dfc_conf(char*, dfc_conf_struct*);
 bool check_dfc_server_struct(dfc_server_struct**);
 void insert_dfc_server_conf(char*, dfc_conf_struct*);

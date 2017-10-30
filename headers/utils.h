@@ -40,6 +40,7 @@ typedef struct file_split_struct {
 char* get_sub_string(char*, char*);
 char* get_token(char*, char*, int);
 char* get_sub_string_after(char*, char*);
+bool compare_user_struct(user_struct*, user_struct*);
 bool check_user_struct(user_struct**);
 void free_user_struct(user_struct*);
 int get_md5_sum_hash_mod(char*);

@@ -38,6 +38,10 @@ char* get_sub_string_after(char* haystack, char* needle)
   return ptr;
 }
 
+bool compare_user_struct(user_struct* u1, user_struct* u2)
+{
+  return (strcmp(u1->username, u2->username) == 0 && strcmp(u1->password, u2->password) == 0) ? true : false;
+}
 bool check_user_struct(user_struct** user)
 {
   if (*user == NULL) {

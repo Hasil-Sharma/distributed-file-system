@@ -1,5 +1,84 @@
 #include "dfcutils.h"
 
+int get_dfc_socket(dfc_server_struct* server)
+{
+
+  int sockfd;
+  struct sockaddr_in serv_addr;
+  struct timeval tv;
+  tv.tv_sec = 1;
+  if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    perror("Unable to start socket:");
+    exit(1);
+  }
+
+  setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(struct timeval));
+  memset(&serv_addr, 0, sizeof(serv_addr));
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_port = htons(server->port);
+
+  if (inet_pton(AF_INET, server->address, &serv_addr.sin_addr) <= 0) {
+    perror("Invalid address/ Address not supported");
+    return -1;
+  }
+
+  if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+    perror("Connection Failed");
+    return -1;
+  }
+  DEBUGSS("Connected to Server", server->name);
+  return sockfd;
+}
+
+void create_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
+{
+  int i;
+  for (i = 0; i < conf->server_count; i++) {
+    conn_fds[i] = get_dfc_socket(conf->servers[i]);
+    if (conn_fds[i] == -1)
+      DEBUGSS("Couldn't Connect to Server", conf->servers[i]->name);
+  }
+}
+
+bool auth_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
+{
+  int i, n_bytes, socket, s_bytes, r_bytes;
+  bool ans = false;
+  char buffer[MAX_SEG_SIZE], response[MAX_SEG_SIZE];
+  memset(buffer, 0, sizeof(buffer));
+  n_bytes = encode_user_struct(buffer, conf->user);
+
+  for (i = 0; i < conf->server_count; i++) {
+    socket = conn_fds[i];
+
+    if (socket != -1) {
+
+      ans = true;
+      if ((s_bytes = send(socket, buffer, n_bytes, 0)) != n_bytes) {
+        fprintf(stderr, "Failed to send auth message\n");
+        return false;
+      }
+
+      memset(response, 0, sizeof(response));
+      if ((r_bytes = recv(socket, response, MAX_SEG_SIZE, 0)) <= 0) {
+        fprintf(stderr, "Failed to recv auth message\n");
+        return false;
+      }
+
+      if (strcmp(response, AUTH_OK) != 0)
+        return false;
+    }
+  }
+
+  return ans;
+}
+
+bool setup_dfc_to_dfs_connections(int** conn_fds, dfc_conf_struct* conf)
+{
+  (*conn_fds) = (int*)malloc(conf->server_count * sizeof(int));
+  create_dfc_to_dfs_connections(*conn_fds, conf);
+  auth_dfc_to_dfs_connections(*conn_fds, conf);
+}
 void read_dfc_conf(char* file_path, dfc_conf_struct* conf)
 {
   FILE* fp;
@@ -60,7 +139,8 @@ void insert_dfc_user_conf(char* line, dfc_conf_struct* conf, char* delim, int fl
   ptr = get_sub_string_after(line, delim);
   if (flag == PASSWORD_FLAG)
     conf->user->password = strdup(ptr);
-  conf->user->username = strdup(ptr);
+  else
+    conf->user->username = strdup(ptr);
 }
 
 bool split_file_to_pieces(char* file_path, file_split_struct* file_split, int n)
@@ -72,12 +152,12 @@ bool split_file_to_pieces(char* file_path, file_split_struct* file_split, int n)
   split_struct* split;
 
   if ((fp = fopen(file_path, "rb")) <= 0) {
-    fprintf(stderr, "Unable to open file: %s", file_path);
+    fprintf(stderr, "Unable to open file: %s\n", file_path);
     return false;
   }
 
   if (stat(file_path, &sb) == -1) {
-    fprintf(stderr, "Error in getting file size: %s", file_path);
+    fprintf(stderr, "Error in getting file size: %s\n", file_path);
     return false;
   }
 
@@ -115,7 +195,7 @@ bool combine_file_from_pieces(char* file_path, file_split_struct* file_split)
   sprintf(file_name, "%s/%s", file_path, file_split->file_name);
 
   if ((fp = fopen(file_name, "wb")) <= 0) {
-    fprintf(stderr, "Unable to open file: %s", file_path);
+    fprintf(stderr, "Unable to open file: %s\n", file_path);
     return false;
   }
 

@@ -4,7 +4,7 @@ int main(int argc, char** argv)
 {
   dfc_conf_struct conf;
   char *conf_file, *file_name, *remote_folder, buffer[MAXFILEBUFF], *char_ptr;
-  int buffer_size, mod;
+  int buffer_size, mod, *conn_fds;
   file_split_struct file_split;
 
   memset(&conf, 0, sizeof(conf));
@@ -16,8 +16,13 @@ int main(int argc, char** argv)
   }
   conf_file = argv[1];
   read_dfc_conf(conf_file, &conf);
-  /*print_dfc_conf_struct(&conf);*/
+  print_dfc_conf_struct(&conf);
+  if (!setup_dfc_to_dfs_connections(&conn_fds, &conf)) {
+    fprintf(stderr, "Failed to authenticate: %s\n", conf.user->username);
+    exit(1);
+  }
 
+  DEBUGSS("Successfully Authenticated", conf.user->username);
   while (true) {
 
     memset(buffer, 0, sizeof(buffer));
