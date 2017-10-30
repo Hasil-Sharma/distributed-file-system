@@ -1,9 +1,9 @@
 #Makefile
 CC = gcc
 INCLUDE = /usr/lib
-LIBS =
+LIBS = -lcrypto -lssl
 OBJS = 
-CFLAGS = -g
+CFLAGS = -g -Wunused
 all: dfs dfc
 
 dfs:
