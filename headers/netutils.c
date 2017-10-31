@@ -15,7 +15,6 @@ int encode_user_struct(char* buffer, user_struct* user)
 void decode_user_struct(char* buffer, user_struct* user)
 {
   int flag;
-  char username[100], password[100];
   DEBUGSS("Auth String Recv", buffer);
   if ((sscanf(buffer, AUTH_TEMPLATE, &flag, user->username, user->password) <= 0)) {
     perror("Failed to decode user struct string");

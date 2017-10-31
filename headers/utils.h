@@ -15,9 +15,12 @@
 #define ROOT_FOLDER_STR "/"
 #define ROOT_FOLDER_CHR '/'
 enum Constants {
+  EXTRACT_LOCAL = 0,
+  EXTRACT_REMOTE = 1,
   MAXFILEBUFF = 100,
   MAXSERVERS = 10,
-  NUM_SERVER = 4
+  NUM_SERVER = 4,
+  MAXCHARBUFF = 100
 };
 
 typedef struct user_struct {
@@ -37,10 +40,21 @@ typedef struct file_split_struct {
   int split_count;
 } file_split_struct;
 
+typedef struct file_attr_struct {
+  char remote_file_name[MAXCHARBUFF];
+  char remote_file_folder[MAXCHARBUFF];
+  char local_file_name[MAXCHARBUFF];
+  char local_file_folder[MAXCHARBUFF];
+} file_attr_struct;
+
 char* get_sub_string(char*, char*);
 char* get_token(char*, char*, int);
 char* get_sub_string_after(char*, char*);
+char* get_file_name_pointer_from_path(char*);
+void extract_file_name_and_folder(char*, file_attr_struct*, int);
+int get_count_str_chr(char*, char);
 bool compare_user_struct(user_struct*, user_struct*);
+
 bool check_user_struct(user_struct**);
 void free_user_struct(user_struct*);
 int get_md5_sum_hash_mod(char*);

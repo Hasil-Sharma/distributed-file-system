@@ -30,6 +30,70 @@ int get_dfc_socket(dfc_server_struct* server)
   return sockfd;
 }
 
+bool dfc_command_validator(char* buffer, int flag, file_attr_struct* file_attr)
+{
+  char *temp, temp_buffer[MAXCHARBUFF];
+  int buffer_len, char_count, i;
+  buffer_len = strlen(buffer);
+  char_count = get_count_str_chr(buffer, ' ');
+  memset(temp_buffer, 0, sizeof(temp_buffer));
+  // Buffer is pointer to the first character of the command arguments
+  if (flag == LIST_FLAG) {
+
+    if (buffer_len == 0) {
+      buffer[0] = ROOT_FOLDER_CHR;
+      ++buffer_len;
+    }
+    extract_file_name_and_folder(buffer, file_attr, EXTRACT_REMOTE);
+
+  } else if (flag == GET_FLAG || flag == PUT_FLAG) {
+
+    if (char_count != 1) {
+      if (flag == GET_FLAG)
+        fprintf(stderr, "GET command not valid\n");
+      else
+        fprintf(stderr, "PUT command not valid\n");
+      return false;
+    }
+
+    // temp now has local path and file_name together
+    for (i = 0; i < 2; i++) {
+      temp = get_token(buffer, SPACE_STR, i);
+      memset(temp_buffer, 0, sizeof(temp_buffer));
+      strcpy(temp_buffer, temp);
+      free(temp);
+      extract_file_name_and_folder(temp_buffer, file_attr,
+          (i == 0) ? EXTRACT_LOCAL : EXTRACT_REMOTE);
+    }
+  } else if (flag == MKDIR_FLAG) {
+    if (char_count != 0) {
+      fprintf(stderr, "MKDIR command not valid\n");
+      return false;
+    }
+    extract_file_name_and_folder(buffer, file_attr, EXTRACT_REMOTE);
+  } else {
+    fprintf(stderr, "<<< Unknown Command\n");
+  }
+  return true;
+}
+void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct* conf)
+{
+  file_attr_struct file_attr;
+  memset(&file_attr, 0, sizeof(file_attr));
+
+  if (dfc_command_validator(buffer, flag, &file_attr)) {
+    if (flag == LIST_FLAG) {
+      DEBUGS("LIST Validation Done");
+    } else if (flag == GET_FLAG) {
+      DEBUGS("GET Validation Done");
+    } else if (flag == PUT_FLAG) {
+      DEBUGS("PUT Validation Done");
+    } else if (flag == MKDIR_FLAG) {
+      DEBUGS("MKDIR Validation Done");
+    }
+  }
+}
+
 void create_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
 {
   int i;
@@ -73,11 +137,10 @@ bool auth_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
   return ans;
 }
 
-bool setup_dfc_to_dfs_connections(int** conn_fds, dfc_conf_struct* conf)
+void setup_dfc_to_dfs_connections(int** conn_fds, dfc_conf_struct* conf)
 {
   (*conn_fds) = (int*)malloc(conf->server_count * sizeof(int));
   create_dfc_to_dfs_connections(*conn_fds, conf);
-  auth_dfc_to_dfs_connections(*conn_fds, conf);
 }
 void read_dfc_conf(char* file_path, dfc_conf_struct* conf)
 {

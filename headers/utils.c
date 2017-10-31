@@ -16,15 +16,15 @@ char* get_token(char* string, char* delim, int offset)
   int len;
 
   if (ptr == NULL) {
-    if (strlen(string) != 0i && offset == 0) // Case when string is sent without second token mentioned
+    if (strlen(string) != 0 && offset == 0) // Case when string is sent without second token mentioned
       return strdup(string);
     else
       return NULL;
   }
-  ptr += offset;
   if (offset == 1)
     return strdup(ptr);
 
+  ptr += offset;
   len = ptr - string - 1;
   return strndup(string, len);
 }
@@ -36,6 +36,76 @@ char* get_sub_string_after(char* haystack, char* needle)
   ptr = strstr(haystack, needle);
   ptr += (ptr) ? strlen(needle) : 0; // Pointer now points to string after needle has compeletely occurred
   return ptr;
+}
+
+void extract_file_name_and_folder(char* buffer, file_attr_struct* file_attr, int flag)
+{
+  char* ptr;
+  int temp_len;
+  DEBUGSS("Buffer to extract from", buffer);
+  ptr = get_file_name_pointer_from_path(buffer);
+
+  if (flag == EXTRACT_LOCAL) {
+
+    if (ptr) {
+      strcpy(file_attr->local_file_name, ptr);
+      temp_len = ptr - buffer;
+      strncpy(file_attr->local_file_folder, buffer, temp_len);
+      DEBUGSS("Local file name", file_attr->local_file_name);
+      DEBUGSS("Local file folder", file_attr->local_file_folder);
+    } else {
+      if ((ptr = get_sub_string(buffer, ROOT_FOLDER_STR)) != 0) {
+        strcpy(file_attr->local_file_folder, buffer);
+        DEBUGSS("Local file folder", file_attr->local_file_folder);
+      } else {
+        strcpy(file_attr->local_file_name, buffer);
+        DEBUGSS("Local file name", file_attr->local_file_name);
+      }
+    }
+
+  } else if (flag == EXTRACT_REMOTE) {
+
+    if (ptr) {
+      strcpy(file_attr->remote_file_name, ptr);
+      temp_len = ptr - buffer;
+      strncpy(file_attr->remote_file_folder, buffer, temp_len);
+      DEBUGSS("Remote file name", file_attr->remote_file_name);
+      DEBUGSS("Remote file folder", file_attr->remote_file_folder);
+    } else {
+      if ((ptr = get_sub_string(buffer, ROOT_FOLDER_STR)) != 0) {
+        strcpy(file_attr->remote_file_folder, buffer);
+        DEBUGSS("Remote file folder", file_attr->remote_file_folder);
+      } else {
+        strcpy(file_attr->remote_file_name, buffer);
+        DEBUGSS("Remote file name", file_attr->remote_file_name);
+      }
+    }
+  }
+}
+
+int get_count_str_chr(char* buffer, char chr)
+{
+  int count = 0, i;
+  if (buffer == NULL)
+    return 0;
+
+  for (i = 0; i < strlen(buffer); i++) {
+    if (buffer[i] == chr)
+      count++;
+  }
+  return count;
+}
+char* get_file_name_pointer_from_path(char* buffer)
+{
+  char* ptr;
+  int buffer_len;
+  if (buffer == NULL)
+    return NULL;
+  buffer_len = strlen(buffer);
+  ptr = strrchr(buffer, ROOT_FOLDER_CHR);
+  if (ptr == NULL || ptr - buffer + 1 == buffer_len) // Last Character is "/"
+    return NULL;
+  return ++ptr;
 }
 
 bool compare_user_struct(user_struct* u1, user_struct* u2)

@@ -42,9 +42,11 @@ typedef struct dfc_conf_struct {
 } dfc_conf_struct;
 
 int get_dfc_socket(dfc_server_struct*);
+bool dfc_command_validator(char*, int, file_attr_struct*);
+void dfc_command_handler(int*, int, char*, dfc_conf_struct*);
 void create_dfc_to_dfs_connections(int*, dfc_conf_struct*);
 bool auth_dfc_to_dfs_connections(int*, dfc_conf_struct*);
-bool setup_dfc_to_dfs_connections(int**, dfc_conf_struct*);
+void setup_dfc_to_dfs_connections(int**, dfc_conf_struct*);
 void read_dfc_conf(char*, dfc_conf_struct*);
 bool check_dfc_server_struct(dfc_server_struct**);
 void insert_dfc_server_conf(char*, dfc_conf_struct*);
