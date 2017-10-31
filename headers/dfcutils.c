@@ -76,24 +76,114 @@ bool dfc_command_validator(char* buffer, int flag, file_attr_struct* file_attr)
   }
   return true;
 }
+
+void dfc_command_builder(char* buffer, const char* format, file_attr_struct* file_attr, user_struct* user, int flag)
+{
+  char *file_folder, *file_name;
+  file_folder = file_attr->remote_file_folder;
+  file_name = file_attr->remote_file_name;
+
+  file_folder = (strlen(file_folder) > 0) ? file_folder : "NULL";
+  file_name = (strlen(file_name) > 0) ? file_name : "NULL";
+  sprintf(buffer, format,
+      flag,
+      user->username,
+      user->password,
+      file_folder,
+      file_name);
+
+  DEBUGSS("Command Built", buffer);
+}
+
 void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct* conf)
 {
   file_attr_struct file_attr;
   memset(&file_attr, 0, sizeof(file_attr));
-
+  char buffer_to_send[MAX_SEG_SIZE];
+  memset(buffer_to_send, 0, sizeof(buffer_to_send));
   if (dfc_command_validator(buffer, flag, &file_attr)) {
+
     if (flag == LIST_FLAG) {
+
       DEBUGS("LIST Validation Done");
+      dfc_command_builder(buffer_to_send, LIST_TEMPLATE, &file_attr, conf->user, flag);
+
     } else if (flag == GET_FLAG) {
+
       DEBUGS("GET Validation Done");
+      if (strlen(file_attr.remote_file_name) == 0) {
+        strcpy(file_attr.remote_file_name, file_attr.local_file_name);
+      }
+      dfc_command_builder(buffer_to_send, GET_TEMPLATE, &file_attr, conf->user, flag);
+
     } else if (flag == PUT_FLAG) {
+
       DEBUGS("PUT Validation Done");
+      if (strlen(file_attr.remote_file_name) == 0) {
+        strcpy(file_attr.remote_file_name, file_attr.local_file_name);
+      }
+      dfc_command_builder(buffer_to_send, PUT_TEMPLATE, &file_attr, conf->user, flag);
+
     } else if (flag == MKDIR_FLAG) {
+
       DEBUGS("MKDIR Validation Done");
+      dfc_command_builder(buffer_to_send, MKDIR_TEMPLATE, &file_attr, conf->user, flag);
     }
+
+    dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, flag);
+  } else {
+    fprintf(stderr, "Failed to validate Command");
   }
 }
 
+bool send_command(int* conn_fds, char* buffer_to_send, int conn_count)
+{
+  int i, buffer_len, s_bytes;
+  buffer_len = strlen(buffer_to_send);
+
+  for (i = 0; i < conn_count; i++) {
+    if (conn_fds[i] == -1)
+      continue;
+    if ((s_bytes = send(conn_fds[i], buffer_to_send, MAXCHARBUFF, 0)) < 0) {
+      return false;
+    }
+    if (s_bytes == 0)
+      conn_fds[i] = -1;
+  }
+
+  return true;
+}
+void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, int flag)
+{
+  int i;
+  bool send_flag;
+  send_flag = send_command(conn_fds, buffer_to_send, conn_count);
+
+  if (flag == LIST_FLAG) {
+
+    if (!send_flag)
+      perror("Unable to send LIST");
+    DEBUGS("Sent LIST");
+  } else if (flag == GET_FLAG) {
+
+    if (!send_flag)
+      perror("Unable to send GET");
+
+    DEBUGS("Sent GET");
+  } else if (flag == PUT_FLAG) {
+
+    if (!send_flag)
+      perror("Unable to send PUT");
+
+    DEBUGS("Sent PUT");
+  } else if (flag == MKDIR_FLAG) {
+
+    if (!send_flag)
+      perror("Unable to send MKDIR");
+
+    DEBUGS("Sent MKDIR");
+  }
+}
 void create_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
 {
   int i;
@@ -142,6 +232,7 @@ void setup_dfc_to_dfs_connections(int** conn_fds, dfc_conf_struct* conf)
   (*conn_fds) = (int*)malloc(conf->server_count * sizeof(int));
   create_dfc_to_dfs_connections(*conn_fds, conf);
 }
+
 void read_dfc_conf(char* file_path, dfc_conf_struct* conf)
 {
   FILE* fp;
@@ -268,6 +359,7 @@ bool combine_file_from_pieces(char* file_path, file_split_struct* file_split)
   }
   fclose(fp);
 }
+
 void print_dfc_conf_struct(dfc_conf_struct* conf)
 {
   int i;

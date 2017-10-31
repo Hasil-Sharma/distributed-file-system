@@ -19,7 +19,7 @@ int main(int argc, char** argv)
 
   read_dfs_conf(file_name, &conf);
   // Assumption that server_folder begins with a /
-  dfs_directory_creator(++server_folder, &conf);
+  /*dfs_directory_creator(++server_folder, &conf);*/
 
   listen_fd = get_dfs_socket(port_number);
 
@@ -30,17 +30,19 @@ int main(int argc, char** argv)
       continue;
     }
 
-    response = AUTH_OK;
-    DEBUGS("Connection Accepted");
-    if (!auth_dfs_user(conn_fd, &conf)) {
-      DEBUGSS("Failed to Authenticate on", server_folder);
-      response = AUTH_NOT_OK;
-    }
+    while (true)
+      dfs_command_accept(conn_fd, &conf);
+    /*response = AUTH_OK;*/
+    /*DEBUGS("Connection Accepted");*/
+    /*if (!auth_dfs_user(conn_fd, &conf)) {*/
+    /*DEBUGSS("Failed to Authenticate on", server_folder);*/
+    /*response = AUTH_NOT_OK;*/
+    /*}*/
 
-    if ((r_bytes = send(conn_fd, response, MAX_SEG_SIZE, 0)) <= 0) {
-      perror("Cannot respond with AUTH OK");
-      continue;
-    }
+    /*if ((r_bytes = send(conn_fd, response, MAX_SEG_SIZE, 0)) <= 0) {*/
+    /*perror("Cannot respond with AUTH OK");*/
+    /*continue;*/
+    /*}*/
 
     /*if(!get_sub_string(response, AUTH_OK))*/
   }

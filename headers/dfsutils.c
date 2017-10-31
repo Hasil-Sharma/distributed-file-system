@@ -36,29 +36,99 @@ int get_dfs_socket(int port_number)
 
   return sockfd;
 }
-
-bool auth_dfs_user(int socket, dfs_conf_struct* conf)
+bool dfs_command_decode(char* buffer, const char* format, dfs_recv_command_struct* recv_cmd, dfs_conf_struct* conf)
 {
-  char buffer[MAX_SEG_SIZE];
-  int r_bytes, i;
-  user_struct user;
+  int flag;
+  user_struct* user;
+  user = &recv_cmd->user;
+  sscanf(buffer, LIST_TEMPLATE,
+      &flag,
+      user->username,
+      user->password,
+      recv_cmd->folder,
+      recv_cmd->file_name);
+
+  DEBUGSS("Username", user->username);
+  DEBUGSS("Password", user->password);
+  DEBUGSS("Folder", recv_cmd->folder);
+  DEBUGSS("Filename", recv_cmd->file_name);
+
+  return auth_dfs_user(user, conf);
+}
+void dfs_command_accept(int socket, dfs_conf_struct* conf)
+{
+  char buffer[MAX_SEG_SIZE], temp_buffer[MAX_SEG_SIZE], *temp_ptr;
+  int r_bytes, flag;
+  user_struct* user;
+  dfs_recv_command_struct dfs_recv_command;
+
   memset(buffer, 0, sizeof(buffer));
-  if ((r_bytes = recv(socket, buffer, MAX_SEG_SIZE, 0)) <= 0) {
-    perror("Failed to Authenticate Connection");
-    return false;
+  memset(temp_buffer, 0, sizeof(temp_buffer));
+  memset(&dfs_recv_command, 0, sizeof(dfs_recv_command));
+
+  dfs_recv_command.user.username = (char*)malloc(MAXCHARBUFF * sizeof(char));
+  dfs_recv_command.user.password = (char*)malloc(MAXCHARBUFF * sizeof(char));
+
+  user = &dfs_recv_command.user;
+  if ((r_bytes = recv(socket, buffer, MAX_SEG_SIZE, 0)) < 0) {
+    perror("Failed to read command");
+    return;
   }
-  user.username = (char*)malloc(MAXFILEBUFF * sizeof(char));
-  user.password = (char*)malloc(MAXFILEBUFF * sizeof(char));
-  decode_user_struct(buffer, &user);
+
+  DEBUGSS("Command Received", buffer);
+  sscanf(buffer, GENERIC_TEMPATE, &dfs_recv_command.flag, temp_buffer);
+  DEBUGSN("Flag", dfs_recv_command.flag);
+  flag = dfs_recv_command.flag;
+
+  if (flag == LIST_FLAG) {
+
+    DEBUGS("Command Received is LIST");
+    if (!dfs_command_decode(buffer, LIST_TEMPLATE, &dfs_recv_command, conf)) {
+      DEBUGSS("Failed to authenticate", user->username);
+    }
+
+    DEBUGSS("Authenticated", user->username);
+
+  } else if (flag == GET_FLAG) {
+
+    DEBUGS("Command Received is GET");
+    if (!dfs_command_decode(buffer, GET_TEMPLATE, &dfs_recv_command, conf)) {
+      DEBUGSS("Failed to authenticate", user->username);
+    }
+
+    DEBUGSS("Authenticated", user->username);
+  } else if (flag == PUT_FLAG) {
+
+    DEBUGS("Command Received is PUT");
+    if (!dfs_command_decode(buffer, PUT_TEMPLATE, &dfs_recv_command, conf)) {
+      DEBUGSS("Failed to authenticate", user->username);
+    }
+
+    DEBUGSS("Authenticated", user->username);
+  } else if (flag == MKDIR_FLAG) {
+
+    DEBUGS("Command Received is MKDIR");
+    if (!dfs_command_decode(buffer, MKDIR_TEMPLATE, &dfs_recv_command, conf)) {
+      DEBUGSS("Failed to authenticate", user->username);
+    }
+
+    DEBUGSS("Authenticated", user->username);
+  }
+
+  free(dfs_recv_command.user.username);
+  free(dfs_recv_command.user.password);
+}
+
+bool auth_dfs_user(user_struct* user, dfs_conf_struct* conf)
+{
+  int i;
   for (i = 0; i < conf->user_count; i++) {
-    if (compare_user_struct(&user, conf->users[i])) {
-      DEBUGSS("Authenticated", user.username);
+    if (compare_user_struct(user, conf->users[i])) {
+      DEBUGSS("auth_dfs_user: Authenticated", user->username);
       return true;
     }
   }
-  DEBUGSS("Couldn't Authenticate", user.username);
-  free(user.username);
-  free(user.password);
+  DEBUGSS("Couldn't Authenticate", user->username);
   return false;
 }
 
