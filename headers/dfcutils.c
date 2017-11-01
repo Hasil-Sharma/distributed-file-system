@@ -1,11 +1,18 @@
 #include "dfcutils.h"
 
+int file_pieces_mapping[4][4][2] = {
+  { { 1, 2 }, { 2, 3 }, { 3, 4 }, { 4, 1 } },
+  { { 4, 1 }, { 1, 2 }, { 2, 3 }, { 3, 4 } },
+  { { 3, 4 }, { 4, 1 }, { 1, 2 }, { 2, 3 } },
+  { { 2, 3 }, { 3, 4 }, { 4, 1 }, { 1, 2 } }
+};
 int get_dfc_socket(dfc_server_struct* server)
 {
 
   int sockfd;
   struct sockaddr_in serv_addr;
   struct timeval tv;
+  memset(&tv, 0, sizeof(tv));
   tv.tv_sec = 1;
   if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
     perror("Unable to start socket:");
@@ -130,7 +137,7 @@ void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct*
       dfc_command_builder(buffer_to_send, MKDIR_TEMPLATE, &file_attr, conf->user, flag);
     }
 
-    dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, flag);
+    dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, &file_attr, flag);
   } else {
     fprintf(stderr, "Failed to validate Command");
   }
@@ -143,7 +150,8 @@ bool send_command(int* conn_fds, char* buffer_to_send, int conn_count)
   for (i = 0; i < conn_count; i++) {
     if (conn_fds[i] == -1)
       continue;
-    if ((s_bytes = send(conn_fds[i], buffer_to_send, MAXCHARBUFF, 0)) < 0) {
+    if ((s_bytes = send(conn_fds[i], buffer_to_send, MAX_SEG_SIZE, 0)) != MAX_SEG_SIZE) {
+      perror("Partial send send_command");
       return false;
     }
     if (s_bytes == 0)
@@ -152,11 +160,38 @@ bool send_command(int* conn_fds, char* buffer_to_send, int conn_count)
 
   return true;
 }
-void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, int flag)
+
+void send_file_splits(int socket, file_split_struct* file_split, int mod, int server_idx)
+{
+
+  u_char payload_buffer[MAX_SEG_SIZE];
+  int file_piece, i, s_bytes;
+  split_struct* split;
+  for (i = 0; i < 2; i++) {
+    memset(payload_buffer, 0, sizeof(payload_buffer));
+    file_piece = file_pieces_mapping[mod][server_idx][i];
+    DEBUGSN("Uploading to Server", server_idx + 1);
+    DEBUGSN("Uploading piece", file_piece);
+    split = file_split->splits[file_piece - 1];
+    assert(split->id == file_piece);
+    encode_split_struct_to_buffer(payload_buffer, split);
+    if ((s_bytes = send(socket, payload_buffer, MAX_SEG_SIZE, 0)) != MAX_SEG_SIZE) {
+      perror("Unable to send file_split");
+    }
+
+    /*DEBUGSS("Payload Buffer", (char*)payload_buffer);*/
+    /*DEBUGSN("Bytes Sent", s_bytes);*/
+  }
+}
+void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_attr_struct* attr, int flag)
 {
   bool send_flag;
   send_flag = send_command(conn_fds, buffer_to_send, conn_count);
+  char file_path[MAXCHARBUFF];
+  int mod, i;
+  file_split_struct file_split;
 
+  memset(file_path, 0, sizeof(file_path));
   if (flag == LIST_FLAG) {
 
     if (!send_flag)
@@ -174,6 +209,17 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, int f
       perror("Unable to send PUT");
 
     DEBUGS("Sent PUT");
+    sprintf(file_path, "%s%s", attr->local_file_folder, attr->local_file_name);
+    mod = get_md5_sum_hash_mod(file_path);
+    split_file_to_pieces(file_path, &file_split, conn_count);
+
+    for (i = 0; i < conn_count; i++) {
+      if (conn_fds[i] == -1)
+        continue;
+      send_file_splits(conn_fds[i], &file_split, mod, i);
+    }
+
+    free_file_split_struct(&file_split);
   } else if (flag == MKDIR_FLAG) {
 
     if (!send_flag)
@@ -320,7 +366,7 @@ bool split_file_to_pieces(char* file_path, file_split_struct* file_split, int n)
 
   split_size = file_size / n; // First n - 1 splits will have split_size number of bytes
   rem_size = file_size % n;   // Last nth split will have split_size + rem_size number of bytes
-
+  file_split->split_count = 0;
   for (i = 0; i < n; i++) {
     file_split->splits[i] = (split_struct*)malloc(sizeof(split_struct));
     split = file_split->splits[i];

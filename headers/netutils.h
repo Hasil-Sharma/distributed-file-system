@@ -23,4 +23,6 @@ enum CommonConstants {
 
 int encode_user_struct(char*, user_struct*);
 void decode_user_struct(char*, user_struct*);
+void encode_split_struct_to_buffer(u_char*, split_struct*);
+void decode_split_struct_from_buffer(u_char*, split_struct*);
 #endif

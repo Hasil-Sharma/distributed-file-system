@@ -83,6 +83,29 @@ void extract_file_name_and_folder(char* buffer, file_attr_struct* file_attr, int
   }
 }
 
+void write_split_struct_to_file(split_struct* split, char* file_folder, char* file_name)
+{
+  // file_folder has a '/' in the end
+
+  FILE* fp;
+  char file_path[2 * MAXCHARBUFF];
+  memset(file_path, 0, sizeof(file_path));
+
+  sprintf(file_path, "%s.%s.%d", file_folder, file_name, split->id);
+
+  DEBUGSS("File written at", file_path);
+  if ((fp = fopen(file_path, "wb")) == NULL) {
+    perror("Error in opening file to write");
+    return;
+  }
+  if (fwrite(split->content, sizeof(u_char), split->content_length, fp) != split->content_length) {
+    perror("Error in writing split to file");
+    fclose(fp);
+    return;
+  }
+
+  fclose(fp);
+}
 int get_count_str_chr(char* buffer, char chr)
 {
   int count = 0, i;

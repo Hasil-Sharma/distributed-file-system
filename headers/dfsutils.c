@@ -70,8 +70,8 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
   dfs_recv_command.user.password = (char*)malloc(MAXCHARBUFF * sizeof(char));
 
   user = &dfs_recv_command.user;
-  if ((r_bytes = recv(socket, buffer, MAX_SEG_SIZE, 0)) < 0) {
-    perror("Failed to read command");
+  if ((r_bytes = recv(socket, buffer, MAX_SEG_SIZE, 0)) != MAX_SEG_SIZE) {
+    perror("Failed to recv dfs_command_accept");
     return;
   }
 
@@ -115,18 +115,21 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
     DEBUGSS("Authenticated", user->username);
   }
 
-  dfs_command_exec(&dfs_recv_command, conf, flag);
+  dfs_command_exec(socket, &dfs_recv_command, conf, flag);
 
   free(dfs_recv_command.user.username);
   free(dfs_recv_command.user.password);
 }
 
-bool dfs_command_exec(dfs_recv_command_struct* recv_cmd, dfs_conf_struct* conf, int flag)
+bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_struct* conf, int flag)
 {
   char char_buffer[2 * MAXCHARBUFF];
-  int len;
+  u_char payload_buffer[MAX_SEG_SIZE];
+  split_struct splits[2];
+  int len, i, r_bytes;
 
   memset(char_buffer, 0, sizeof(char_buffer));
+  memset(&splits, 0, sizeof(splits));
   len = sprintf(char_buffer, "%s/%s/%s", conf->server_name, recv_cmd->user.username, recv_cmd->folder);
 
   // Handling case when recv_cmd->folder is '/'
@@ -135,13 +138,30 @@ bool dfs_command_exec(dfs_recv_command_struct* recv_cmd, dfs_conf_struct* conf, 
 
   DEBUGSS("Generated folder path", char_buffer);
 
-  create_dfs_directory(char_buffer);
   if (flag == LIST_FLAG) {
   } else if (flag == GET_FLAG) {
   } else if (flag == PUT_FLAG) {
+
+    create_dfs_directory(char_buffer);
+    for (i = 0; i < 2; i++) {
+
+      memset(payload_buffer, 0, sizeof(payload_buffer));
+      r_bytes = 0;
+      while (r_bytes != MAX_SEG_SIZE) {
+        if ((r_bytes += recv(socket, payload_buffer, MAX_SEG_SIZE, 0)) <= 0)
+          perror("Failed to receive file_split");
+        DEBUGSN("Bytes Received: dfs_command_exec", r_bytes);
+      }
+      decode_split_struct_from_buffer(payload_buffer, &splits[i]);
+      DEBUGSS("Payload Buffer", (char*)payload_buffer);
+      DEBUGSN("Received file_split id", splits[i].id);
+      write_split_struct_to_file(&splits[i], char_buffer, recv_cmd->file_name);
+    }
   } else if (flag == MKDIR_FLAG) {
+    create_dfs_directory(char_buffer);
   }
 }
+
 bool auth_dfs_user(user_struct* user, dfs_conf_struct* conf)
 {
   int i;

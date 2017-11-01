@@ -54,10 +54,10 @@ char* get_file_name_pointer_from_path(char*);
 void extract_file_name_and_folder(char*, file_attr_struct*, int);
 int get_count_str_chr(char*, char);
 bool compare_user_struct(user_struct*, user_struct*);
-
 bool check_user_struct(user_struct**);
 void free_user_struct(user_struct*);
 int get_md5_sum_hash_mod(char*);
+void write_split_struct_to_file(split_struct*, char*, char*);
 void free_file_split_struct(file_split_struct*);
 void free_split_struct(split_struct*);
 void print_file_split_struct(file_split_struct*);
