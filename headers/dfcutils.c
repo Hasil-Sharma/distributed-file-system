@@ -138,8 +138,7 @@ void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct*
 
 bool send_command(int* conn_fds, char* buffer_to_send, int conn_count)
 {
-  int i, buffer_len, s_bytes;
-  buffer_len = strlen(buffer_to_send);
+  int i, s_bytes;
 
   for (i = 0; i < conn_count; i++) {
     if (conn_fds[i] == -1)
@@ -155,7 +154,6 @@ bool send_command(int* conn_fds, char* buffer_to_send, int conn_count)
 }
 void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, int flag)
 {
-  int i;
   bool send_flag;
   send_flag = send_command(conn_fds, buffer_to_send, conn_count);
 
