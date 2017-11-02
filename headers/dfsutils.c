@@ -146,15 +146,20 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
     for (i = 0; i < 2; i++) {
 
       memset(payload_buffer, 0, sizeof(payload_buffer));
-      r_bytes = 0;
-      while (r_bytes != MAX_SEG_SIZE) {
-        if ((r_bytes += recv(socket, payload_buffer, MAX_SEG_SIZE, 0)) <= 0)
-          perror("Failed to receive file_split");
-        DEBUGSN("Bytes Received: dfs_command_exec", r_bytes);
-      }
-      decode_split_struct_from_buffer(payload_buffer, &splits[i]);
-      DEBUGSS("Payload Buffer", (char*)payload_buffer);
-      DEBUGSN("Received file_split id", splits[i].id);
+      /*r_bytes = 0;*/
+      /*while (r_bytes != MAX_SEG_SIZE) {*/
+      /*if ((r_bytes += recv(socket, payload_buffer, MAX_SEG_SIZE, 0)) <= 0)*/
+      /*perror("Failed to receive file_split");*/
+      /*DEBUGSN("Bytes Received: dfs_command_exec", r_bytes);*/
+      /*}*/
+      write_split_from_socket_as_stream(socket, &splits[i]);
+      DEBUGS("Split struct read complete");
+
+      DEBUGS("Md5 hash Sum");
+      print_hash_value(splits[i].content, splits[i].content_length);
+      /*decode_split_struct_from_buffer(payload_buffer, &splits[i]);*/
+      /*DEBUGSS("Payload Buffer", (char*)payload_buffer);*/
+      /*DEBUGSN("Received file_split id", splits[i].id);*/
       write_split_struct_to_file(&splits[i], char_buffer, recv_cmd->file_name);
     }
   } else if (flag == MKDIR_FLAG) {

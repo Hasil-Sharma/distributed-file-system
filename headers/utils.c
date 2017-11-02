@@ -179,6 +179,21 @@ int get_md5_sum_hash_mod(char* file_path)
   return mod;
 }
 
+void print_hash_value(u_char* buffer, int length)
+{
+  int i;
+  u_char c[MD5_DIGEST_LENGTH];
+  MD5_CTX context;
+  MD5_Init(&context);
+  MD5_Update(&context, buffer, length);
+  MD5_Final(c, &context);
+
+  for (i = 0; i < MD5_DIGEST_LENGTH; i++)
+    fprintf(stderr, "%02x", c[i]);
+
+  fprintf(stderr, "\n");
+}
+
 void free_file_split_struct(file_split_struct* file_split)
 {
   free(file_split->file_name);

@@ -174,13 +174,10 @@ void send_file_splits(int socket, file_split_struct* file_split, int mod, int se
     DEBUGSN("Uploading piece", file_piece);
     split = file_split->splits[file_piece - 1];
     assert(split->id == file_piece);
-    encode_split_struct_to_buffer(payload_buffer, split);
-    if ((s_bytes = send(socket, payload_buffer, MAX_SEG_SIZE, 0)) != MAX_SEG_SIZE) {
-      perror("Unable to send file_split");
-    }
-
-    /*DEBUGSS("Payload Buffer", (char*)payload_buffer);*/
-    /*DEBUGSN("Bytes Sent", s_bytes);*/
+    DEBUGS("Split Hash_Value");
+    print_hash_value(split->content, split->content_length);
+    DEBUGSN("Split Content Length", split->content_length);
+    write_split_to_socket_as_stream(socket, split);
   }
 }
 void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_attr_struct* attr, int flag)
