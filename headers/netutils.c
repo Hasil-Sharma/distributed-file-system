@@ -14,7 +14,7 @@ void recv_int_value_socket(int socket, int* value)
   decode_int_from_uchar(payload, value);
 }
 
-bool send_to_socket(int socket, u_char* payload, int size_of_payload)
+int send_to_socket(int socket, u_char* payload, int size_of_payload)
 {
   int s_bytes = 0;
 
@@ -25,21 +25,26 @@ bool send_to_socket(int socket, u_char* payload, int size_of_payload)
     }
 
     if (s_bytes == 0)
-      return false;
+      break;
   }
 
-  return true;
+  return s_bytes;
 }
 
-void recv_from_socket(int socket, u_char* payload, int size_of_payload)
+int recv_from_socket(int socket, u_char* payload, int size_of_payload)
 {
   int r_bytes = 0;
 
-  while (r_bytes != size_of_payload)
-    if ((r_bytes += recv(socket, payload + r_bytes, size_of_payload - r_bytes, 0)) <= 0) {
+  while (r_bytes != size_of_payload) {
+    if ((r_bytes += recv(socket, payload + r_bytes, size_of_payload - r_bytes, 0)) < 0) {
       perror("Unable to receive entire payload via socket");
       exit(1);
     }
+
+    if (r_bytes == 0)
+      break;
+  }
+  return r_bytes;
 }
 int encode_user_struct(char* buffer, user_struct* user)
 {
@@ -144,22 +149,23 @@ void write_split_to_socket_as_stream(int socket, split_struct* split)
   bytes_to_send_next = (bytes_to_send_next < MAX_SEG_SIZE - 9) ? bytes_to_send_next : MAX_SEG_SIZE - 9;
   bcopy(split->content, payload_buffer + 9, bytes_to_send_next);
 
-  while (bytes_sent != MAX_SEG_SIZE) {
-    if ((bytes_sent += send(socket, payload_buffer + bytes_sent, MAX_SEG_SIZE - bytes_sent, 0)) < 0) {
-      perror("Unable to send first split struct data");
-    }
-  }
+  send_to_socket(socket, payload_buffer, MAX_SEG_SIZE);
+  /*while (bytes_sent != MAX_SEG_SIZE) {*/
+  /*if ((bytes_sent += send(socket, payload_buffer + bytes_sent, MAX_SEG_SIZE - bytes_sent, 0)) < 0) {*/
+  /*perror("Unable to send first split struct data");*/
+  /*}*/
+  /*}*/
 
   content_bytes_sent = bytes_to_send_next;
   DEBUGSN("content_bytes_sent", content_bytes_sent);
   if (split->content_length > MAX_SEG_SIZE - 9) {
-    DEBUGS("Couldn't send entire buffer");
-
-    while (content_bytes_sent != split->content_length) {
-      if ((content_bytes_sent += send(socket, split->content + content_bytes_sent, split->content_length - content_bytes_sent, 0)) < 0) {
-        perror("Unable to send split struct data");
-      }
-    }
+    DEBUGS("Sending remaining buffer");
+    send_to_socket(socket, split->content + content_bytes_sent, split->content_length - content_bytes_sent);
+    /*while (content_bytes_sent != split->content_length) {*/
+    /*if ((content_bytes_sent += send(socket, split->content + content_bytes_sent, split->content_length - content_bytes_sent, 0)) < 0) {*/
+    /*perror("Unable to send split struct data");*/
+    /*}*/
+    /*}*/
   }
 }
 
@@ -169,11 +175,14 @@ void write_split_from_socket_as_stream(int socket, split_struct* split)
   int read_bytes = 0, content_bytes_recv, bytes_to_recv_next;
 
   memset(payload_buffer, 0, sizeof(payload_buffer));
-  while (read_bytes != MAX_SEG_SIZE) {
-    if ((read_bytes += recv(socket, payload_buffer + read_bytes, MAX_SEG_SIZE - read_bytes, 0)) < 0) {
-      perror("Error in receiving write flag chunk");
-    }
-  }
+
+  recv_from_socket(socket, payload_buffer, MAX_SEG_SIZE);
+
+  /*while (read_bytes != MAX_SEG_SIZE) {*/
+  /*if ((read_bytes += recv(socket, payload_buffer + read_bytes, MAX_SEG_SIZE - read_bytes, 0)) < 0) {*/
+  /*perror("Error in receiving write flag chunk");*/
+  /*}*/
+  /*}*/
 
   if (payload_buffer[0] == INITIAL_WRITE_FLAG) {
     DEBUGS("Initial Write Flag");
@@ -195,13 +204,14 @@ void write_split_from_socket_as_stream(int socket, split_struct* split)
 
   if (split->content_length > content_bytes_recv) {
 
-    DEBUGS("Couldn't recevie entire buffer");
+    DEBUGS("Recevieng rest of buffer");
 
-    while (content_bytes_recv != split->content_length) {
-      if ((content_bytes_recv += recv(socket, split->content + content_bytes_recv, split->content_length - content_bytes_recv, 0)) < 0) {
-        perror("Error in receiving write flag chunk");
-      }
-    }
+    recv_from_socket(socket, split->content + content_bytes_recv, split->content_length - content_bytes_recv);
+    /*while (content_bytes_recv != split->content_length) {*/
+    /*if ((content_bytes_recv += recv(socket, split->content + content_bytes_recv, split->content_length - content_bytes_recv, 0)) < 0) {*/
+    /*perror("Error in receiving write flag chunk");*/
+    /*}*/
+    /*}*/
   }
 }
 

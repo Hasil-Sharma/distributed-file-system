@@ -71,18 +71,18 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
 
   user = &dfs_recv_command.user;
 
-  if ((r_bytes = recv(socket, buffer, MAX_SEG_SIZE, 0)) != MAX_SEG_SIZE) {
-    perror("Failed to recv dfs_command_accept");
-    return;
-  }
+  // receiving the command
+  DEBUGS("Recv the command");
+  recv_from_socket(socket, buffer, MAX_SEG_SIZE);
 
   c = 'Y';
   // This to let client know about the non-existent servers
+  DEBUGS("Sending the Alive ACK");
   send_to_socket(socket, &c, 1);
 
   DEBUGSS("Command Received", buffer);
   sscanf(buffer, GENERIC_TEMPATE, &dfs_recv_command.flag, temp_buffer);
-  DEBUGSN("Flag", dfs_recv_command.flag);
+  /*DEBUGSN("Flag", dfs_recv_command.flag);*/
   flag = dfs_recv_command.flag;
 
   if (flag == LIST_FLAG) {

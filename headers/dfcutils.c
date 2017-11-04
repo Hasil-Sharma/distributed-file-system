@@ -147,33 +147,25 @@ bool send_command(int* conn_fds, char* buffer_to_send, int conn_count)
 {
   int i, s_bytes;
   char c;
+  bool ret_val = false; // To make sure atleast one server is running
   for (i = 0; i < conn_count; i++) {
     DEBUGSN("For Server", i + 1);
     if (conn_fds[i] == -1)
       continue;
 
-    if (!send_to_socket(conn_fds[i], buffer_to_send, MAX_SEG_SIZE)) {
-      DEBUGSN("Server Down", i + 1);
-      close(conn_fds[i]);
-      conn_fds[i] = -1;
-    }
+    send_to_socket(conn_fds[i], buffer_to_send, MAX_SEG_SIZE);
     DEBUGS("Sent done");
 
-    if (recv(conn_fds[i], &c, 1, 0) == 0) {
+    if (recv_from_socket(conn_fds[i], &c, 1) == 0) {
 
       DEBUGSN("Server Down", i + 1);
       close(conn_fds[i]);
       conn_fds[i] = -1;
-    }
-    /*if ((s_bytes = send(conn_fds[i], buffer_to_send, MAX_SEG_SIZE, 0)) != MAX_SEG_SIZE) {*/
-    /*perror("Partial send send_command");*/
-    /*return false;*/
-    /*}*/
-    /*if (s_bytes == 0)*/
-    /*conn_fds[i] = -1;*/
+    } else
+      ret_val = true;
   }
 
-  return true;
+  return ret_val;
 }
 
 void send_file_splits(int socket, file_split_struct* file_split, int mod, int server_idx)

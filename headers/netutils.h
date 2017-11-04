@@ -30,8 +30,8 @@ enum CommonConstants {
 int encode_user_struct(char*, user_struct*);
 void send_int_value_socket(int, int);
 void recv_int_value_socket(int, int*);
-bool send_to_socket(int, u_char*, int);
-void recv_from_socket(int, u_char*, int);
+int send_to_socket(int, u_char*, int);
+int recv_from_socket(int, u_char*, int);
 void decode_user_struct(char*, user_struct*);
 void encode_split_struct_to_buffer(u_char*, split_struct*);
 void decode_split_struct_from_buffer(u_char*, split_struct*);
