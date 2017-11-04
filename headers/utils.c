@@ -9,6 +9,111 @@ char* get_sub_string(char* haystack, char* needle)
   return strstr(haystack, needle);
 }
 
+void insert_to_server_chunks_collate_struct(server_chunks_collate_struct* server_chunks_collate, server_chunks_info_struct* server_chunks_info)
+{
+  int i, j, k, chunk_num, match_count = 0;
+  for (i = 0; i < server_chunks_info->chunks; i++) {
+
+    j = check_file_name_exist(server_chunks_collate->file_names, server_chunks_info->chunk_info[i].file_name, server_chunks_collate->num_files);
+    // Checking if file name received exits already
+
+    if (j < 0) {
+      // file doesn't exist
+
+      server_chunks_collate->num_files++;
+      j = server_chunks_collate->num_files - 1;
+      strcpy(server_chunks_collate->file_names[j], server_chunks_info->chunk_info[i].file_name);
+    }
+
+    // file exits
+
+    for (k = 0; k < CHUNKS_PER_SERVER; k++) {
+      chunk_num = server_chunks_info->chunk_info[i].chunks[k];
+      server_chunks_collate->chunks[j][chunk_num - 1] = true;
+    }
+  }
+}
+
+int check_file_name_exist(char file_names[][100], char* file_name, int n)
+{
+  int i;
+  for (i = 0; i < n; i++)
+    if (compare_str(file_names[i], file_name))
+      return i;
+  return -1;
+}
+void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks)
+{
+  int i, chunk_num, chunk_idx, j;
+  char temp_folder[strlen(folder) + 2], file_name[MAXCHARBUFF], *temp_ptr_1 = NULL, *temp_ptr_2 = NULL;
+
+  memset(temp_folder, 0, sizeof(temp_folder));
+  memset(file_name, 0, sizeof(file_name));
+  strcpy(temp_folder, folder);
+
+  temp_folder[strlen(folder)] = '.';
+  temp_folder[strlen(folder) + 1] = '*';
+
+  temp_folder[strlen(folder) + 2] = '\0';
+  DEBUGSS("Changed Path", temp_folder);
+  glob_t glob_result;
+  if (glob(temp_folder, GLOB_PERIOD, NULL, &glob_result) == GLOB_ERR) {
+    perror("Error in Glob");
+  }
+
+  DEBUGSN("Num files", glob_result.gl_pathc);
+  assert(glob_result.gl_pathc % 2 == 0);
+  server_chunks->chunks = glob_result.gl_pathc / 2 - 1; // removing '.' and '..'
+  server_chunks->chunk_info = (chunk_info_struct*)malloc(server_chunks->chunks * sizeof(chunk_info_struct));
+  for (i = 0, chunk_idx = -1; i < glob_result.gl_pathc; i++) {
+    temp_ptr_1 = get_file_name_pointer_from_path(glob_result.gl_pathv[i]);
+    chunk_num = 0;
+    // To remove the case of "." and ".."
+    if (strlen(temp_ptr_1) <= 2)
+      continue;
+    DEBUGSS("File", temp_ptr_1);
+    temp_ptr_2 = strrchr(temp_ptr_1, '.');
+    chunk_num = atoi(temp_ptr_2 + 1);
+    DEBUGSN("Chunk Num", chunk_num);
+    *temp_ptr_2 = NULL_CHAR;
+    DEBUGSS("File Name", temp_ptr_1 + 1);
+
+    if (!compare_str(temp_ptr_1 + 1, file_name)) {
+      strcpy(file_name, temp_ptr_1 + 1);
+      DEBUGSS("File Name set to", file_name);
+      chunk_idx++;
+      j = 0;
+    }
+
+    strcpy(server_chunks->chunk_info[chunk_idx].file_name, file_name);
+    server_chunks->chunk_info[chunk_idx].chunks[j++] = chunk_num;
+  }
+
+  print_server_chunks_info_struct(server_chunks);
+}
+
+void print_server_chunks_info_struct(server_chunks_info_struct* server_chunks)
+{
+  DEBUGS("Printing Print Server Chunks Info Struct");
+  int i;
+  for (i = 0; i < server_chunks->chunks; i++) {
+    print_chunks_info_struct(&server_chunks->chunk_info[i]);
+  }
+}
+
+void print_chunks_info_struct(chunk_info_struct* chunk_info)
+{
+  int i;
+  DEBUGSS("Filename", chunk_info->file_name);
+  for (i = 0; i < CHUNKS_PER_SERVER; i++)
+    DEBUGSN("Chunk Number", chunk_info->chunks[i]);
+}
+bool compare_str(char* str1, char* str2)
+{
+  if (str1 == NULL || str2 == NULL)
+    return false;
+  return (strcmp(str1, str2) == 0) ? true : false;
+}
 char* get_token(char* string, char* delim, int offset)
 {
   // Will only parse two token strings offset = 0 gives first string and offset = 1 give second string
@@ -224,4 +329,18 @@ void print_split_struct(split_struct* split)
   DEBUGSN("Split with id", split->id);
   DEBUGSN("Content_length", split->content_length);
   DEBUGSS("Content", (char*)split->content);
+}
+
+void print_server_chunks_collate_struct(server_chunks_collate_struct* server_chunks_collate)
+{
+  int i, j;
+  DEBUGS("Printing Server Chunks Collate Struct");
+  DEBUGSN("Num File", server_chunks_collate->num_files);
+  for (i = 0; i < server_chunks_collate->num_files; i++) {
+    DEBUGSS("File name", server_chunks_collate->file_names[i]);
+    for (j = 0; j < NUM_SERVER; j++) {
+      DEBUGSN("Chunk", j + 1);
+      DEBUGSN("Present", server_chunks_collate->chunks[i][j]);
+    }
+  }
 }

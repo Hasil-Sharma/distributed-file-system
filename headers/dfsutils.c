@@ -57,7 +57,7 @@ bool dfs_command_decode_and_auth(char* buffer, const char* format, dfs_recv_comm
 }
 void dfs_command_accept(int socket, dfs_conf_struct* conf)
 {
-  char buffer[MAX_SEG_SIZE], temp_buffer[MAX_SEG_SIZE];
+  char buffer[MAX_SEG_SIZE], temp_buffer[MAX_SEG_SIZE], c;
   int r_bytes, flag;
   user_struct* user;
   dfs_recv_command_struct dfs_recv_command;
@@ -70,10 +70,15 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
   dfs_recv_command.user.password = (char*)malloc(MAXCHARBUFF * sizeof(char));
 
   user = &dfs_recv_command.user;
+
   if ((r_bytes = recv(socket, buffer, MAX_SEG_SIZE, 0)) != MAX_SEG_SIZE) {
     perror("Failed to recv dfs_command_accept");
     return;
   }
+
+  c = 'Y';
+  // This to let client know about the non-existent servers
+  send_to_socket(socket, &c, 1);
 
   DEBUGSS("Command Received", buffer);
   sscanf(buffer, GENERIC_TEMPATE, &dfs_recv_command.flag, temp_buffer);
@@ -124,12 +129,14 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
 bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_struct* conf, int flag)
 {
   char char_buffer[2 * MAXCHARBUFF];
-  u_char payload_buffer[MAX_SEG_SIZE];
+  u_char payload_buffer[MAX_SEG_SIZE], *u_char_buffer;
+  server_chunks_info_struct server_chunks_info;
   split_struct splits[2];
-  int len, i, r_bytes;
+  int len, i, r_bytes, size_of_payload;
 
   memset(char_buffer, 0, sizeof(char_buffer));
   memset(&splits, 0, sizeof(splits));
+  memset(&server_chunks_info, 0, sizeof(server_chunks_info_struct));
   len = sprintf(char_buffer, "%s/%s/%s", conf->server_name, recv_cmd->user.username, recv_cmd->folder);
 
   // Handling case when recv_cmd->folder is '/'
@@ -139,6 +146,18 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
   DEBUGSS("Generated folder path", char_buffer);
 
   if (flag == LIST_FLAG) {
+    get_files_in_folder(char_buffer, &server_chunks_info);
+    print_server_chunks_info_struct(&server_chunks_info);
+
+    size_of_payload = INT_SIZE + server_chunks_info.chunks * CHUNK_INFO_STRUCT_SIZE;
+
+    // First send the size_of_payload
+
+    send_int_value_socket(socket, size_of_payload);
+    u_char_buffer = (u_char*)malloc(sizeof(u_char) * size_of_payload);
+    encode_server_chunks_info_struct_to_buffer(u_char_buffer, &server_chunks_info);
+    send_to_socket(socket, u_char_buffer, size_of_payload);
+    free(u_char_buffer);
   } else if (flag == GET_FLAG) {
   } else if (flag == PUT_FLAG) {
 

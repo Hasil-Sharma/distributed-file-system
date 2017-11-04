@@ -1,5 +1,46 @@
 #include "netutils.h"
 
+void send_int_value_socket(int socket, int value)
+{
+  u_char payload[INT_SIZE];
+  encode_int_to_uchar(payload, value);
+  send_to_socket(socket, payload, INT_SIZE);
+}
+
+void recv_int_value_socket(int socket, int* value)
+{
+  u_char payload[INT_SIZE];
+  recv_from_socket(socket, payload, INT_SIZE);
+  decode_int_from_uchar(payload, value);
+}
+
+bool send_to_socket(int socket, u_char* payload, int size_of_payload)
+{
+  int s_bytes = 0;
+
+  while (s_bytes != size_of_payload) {
+    if ((s_bytes += send(socket, payload + s_bytes, size_of_payload - s_bytes, 0)) < 0) {
+      perror("Unable to send entire payload via socket");
+      exit(1);
+    }
+
+    if (s_bytes == 0)
+      return false;
+  }
+
+  return true;
+}
+
+void recv_from_socket(int socket, u_char* payload, int size_of_payload)
+{
+  int r_bytes = 0;
+
+  while (r_bytes != size_of_payload)
+    if ((r_bytes += recv(socket, payload + r_bytes, size_of_payload - r_bytes, 0)) <= 0) {
+      perror("Unable to receive entire payload via socket");
+      exit(1);
+    }
+}
 int encode_user_struct(char* buffer, user_struct* user)
 {
   int n_bytes;
@@ -47,6 +88,46 @@ void decode_int_from_uchar(u_char* buffer, int* n)
 
   *n = temp;
 }
+
+void encode_server_chunks_info_struct_to_buffer(u_char* buffer, server_chunks_info_struct* server_chunks_info)
+{
+  int i;
+  // First four bytes contain integer
+  encode_int_to_uchar(buffer, server_chunks_info->chunks);
+
+  for (i = 0; i < server_chunks_info->chunks; i++) {
+    encode_chunk_info_struct_to_buffer(buffer + INT_SIZE + i * CHUNK_INFO_STRUCT_SIZE, &server_chunks_info->chunk_info[i]);
+  }
+}
+
+void decode_server_chunks_info_struct_from_buffer(u_char* buffer, server_chunks_info_struct* server_chunks_info)
+{
+  int i;
+  decode_int_from_uchar(buffer, &server_chunks_info->chunks);
+
+  server_chunks_info->chunk_info = (chunk_info_struct*)malloc(sizeof(chunk_info_struct) * server_chunks_info->chunks);
+  for (i = 0; i < server_chunks_info->chunks; i++) {
+    decode_chunk_info_struct_from_buffer(buffer + INT_SIZE + i * CHUNK_INFO_STRUCT_SIZE, &server_chunks_info->chunk_info[i]);
+  }
+}
+
+void encode_chunk_info_struct_to_buffer(u_char* buffer, chunk_info_struct* chunk_info)
+{
+  int i;
+  memcpy(buffer, chunk_info->file_name, MAXCHARBUFF);
+  for (i = 0; i < CHUNKS_PER_SERVER; i++)
+    encode_int_to_uchar(buffer + MAXCHARBUFF + i * INT_SIZE, chunk_info->chunks[i]);
+}
+
+void decode_chunk_info_struct_from_buffer(u_char* buffer, chunk_info_struct* chunk_info)
+{
+  int i;
+  memcpy(chunk_info->file_name, buffer, MAXCHARBUFF);
+
+  for (i = 0; i < CHUNKS_PER_SERVER; i++)
+    decode_int_from_uchar(buffer + MAXCHARBUFF + i * INT_SIZE, &chunk_info->chunks[i]);
+}
+
 void write_split_to_socket_as_stream(int socket, split_struct* split)
 {
   // 1 byte for flag 4 bytes for split_id and 4 bytes for content_length

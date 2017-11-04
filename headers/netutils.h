@@ -22,15 +22,25 @@ enum CommonConstants {
   MAX_SEG_SIZE = 512,
   INITIAL_WRITE_FLAG = 0,
   CHUNK_WRITE_FLAG = 1,
-  FINAL_WRITE_FLAG = 2
+  FINAL_WRITE_FLAG = 2,
+  INT_SIZE = 4,
+  CHUNK_INFO_STRUCT_SIZE = MAXCHARBUFF + NUM_SERVER * INT_SIZE
 };
 
 int encode_user_struct(char*, user_struct*);
+void send_int_value_socket(int, int);
+void recv_int_value_socket(int, int*);
+bool send_to_socket(int, u_char*, int);
+void recv_from_socket(int, u_char*, int);
 void decode_user_struct(char*, user_struct*);
 void encode_split_struct_to_buffer(u_char*, split_struct*);
 void decode_split_struct_from_buffer(u_char*, split_struct*);
 void encode_int_to_uchar(u_char*, int);
 void decode_int_from_uchar(u_char*, int*);
+void encode_server_chunks_info_struct_to_buffer(u_char*, server_chunks_info_struct*);
+void decode_server_chunks_info_struct_from_buffer(u_char*, server_chunks_info_struct*);
+void encode_chunk_info_struct_to_buffer(u_char*, chunk_info_struct*);
+void decode_chunk_info_struct_from_buffer(u_char*, chunk_info_struct*);
 void write_split_to_socket_as_stream(int, split_struct*);
 void write_split_from_socket_as_stream(int, split_struct*);
 #endif

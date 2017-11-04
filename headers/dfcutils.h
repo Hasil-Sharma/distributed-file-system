@@ -47,6 +47,7 @@ void dfc_command_handler(int*, int, char*, dfc_conf_struct*);
 void dfc_command_builder(char*, const char*, file_attr_struct*, user_struct*, int);
 void dfc_command_exec(int*, char*, int, file_attr_struct*, int);
 void create_dfc_to_dfs_connections(int*, dfc_conf_struct*);
+void get_output_list_command(server_chunks_collate_struct*);
 bool auth_dfc_to_dfs_connections(int*, dfc_conf_struct*);
 void setup_dfc_to_dfs_connections(int**, dfc_conf_struct*);
 void read_dfc_conf(char*, dfc_conf_struct*);

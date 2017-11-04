@@ -146,16 +146,31 @@ void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct*
 bool send_command(int* conn_fds, char* buffer_to_send, int conn_count)
 {
   int i, s_bytes;
-
+  char c;
   for (i = 0; i < conn_count; i++) {
+    DEBUGSN("For Server", i + 1);
     if (conn_fds[i] == -1)
       continue;
-    if ((s_bytes = send(conn_fds[i], buffer_to_send, MAX_SEG_SIZE, 0)) != MAX_SEG_SIZE) {
-      perror("Partial send send_command");
-      return false;
-    }
-    if (s_bytes == 0)
+
+    if (!send_to_socket(conn_fds[i], buffer_to_send, MAX_SEG_SIZE)) {
+      DEBUGSN("Server Down", i + 1);
+      close(conn_fds[i]);
       conn_fds[i] = -1;
+    }
+    DEBUGS("Sent done");
+
+    if (recv(conn_fds[i], &c, 1, 0) == 0) {
+
+      DEBUGSN("Server Down", i + 1);
+      close(conn_fds[i]);
+      conn_fds[i] = -1;
+    }
+    /*if ((s_bytes = send(conn_fds[i], buffer_to_send, MAX_SEG_SIZE, 0)) != MAX_SEG_SIZE) {*/
+    /*perror("Partial send send_command");*/
+    /*return false;*/
+    /*}*/
+    /*if (s_bytes == 0)*/
+    /*conn_fds[i] = -1;*/
   }
 
   return true;
@@ -180,20 +195,47 @@ void send_file_splits(int socket, file_split_struct* file_split, int mod, int se
     write_split_to_socket_as_stream(socket, split);
   }
 }
+
 void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_attr_struct* attr, int flag)
 {
   bool send_flag;
   send_flag = send_command(conn_fds, buffer_to_send, conn_count);
   char file_path[MAXCHARBUFF];
-  int mod, i;
+  int mod, i, payload_size;
+  u_char* payload;
   file_split_struct file_split;
+  server_chunks_info_struct server_chunks_info;
+  server_chunks_collate_struct server_chunks_collate;
 
   memset(file_path, 0, sizeof(file_path));
+  memset(&server_chunks_info, 0, sizeof(server_chunks_info));
+  memset(&server_chunks_collate, 0, sizeof(server_chunks_collate));
+
   if (flag == LIST_FLAG) {
 
     if (!send_flag)
       perror("Unable to send LIST");
     DEBUGS("Sent LIST");
+
+    for (i = 0; i < conn_count; i++) {
+      if (conn_fds[i] == -1)
+        continue;
+
+      recv_int_value_socket(conn_fds[i], &payload_size);
+      DEBUGSN("SERVER", i + 1);
+      DEBUGSN("Payload Size", payload_size);
+
+      payload = (u_char*)malloc(sizeof(u_char) * payload_size);
+      memset(payload, 0, sizeof(payload));
+      recv_from_socket(conn_fds[i], payload, payload_size);
+      decode_server_chunks_info_struct_from_buffer(payload, &server_chunks_info);
+      print_server_chunks_info_struct(&server_chunks_info);
+      insert_to_server_chunks_collate_struct(&server_chunks_collate, &server_chunks_info);
+      free(payload);
+    }
+
+    print_server_chunks_collate_struct(&server_chunks_collate);
+    get_output_list_command(&server_chunks_collate);
   } else if (flag == GET_FLAG) {
 
     if (!send_flag)
@@ -225,13 +267,37 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
     DEBUGS("Sent MKDIR");
   }
 }
+
+bool check_complete(bool* flag_array)
+{
+  int sum, i;
+
+  for (i = 0, sum = 0; i < NUM_SERVER; i++)
+    sum += flag_array[i];
+
+  return (sum == NUM_SERVER) ? true : false;
+}
+void get_output_list_command(server_chunks_collate_struct* server_chunks_collate)
+{
+  int i;
+  for (i = 0; i < server_chunks_collate->num_files; i++) {
+    printf("%s", server_chunks_collate->file_names[i]);
+    if (check_complete(server_chunks_collate->chunks[i]))
+      printf("\n");
+    else
+      printf(" [INCOMPLETE]\n");
+  }
+}
 void create_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
 {
   int i;
+  struct timeval tv;
+  tv.tv_sec = 1;
   for (i = 0; i < conf->server_count; i++) {
     conn_fds[i] = get_dfc_socket(conf->servers[i]);
     if (conn_fds[i] == -1)
       DEBUGSS("Couldn't Connect to Server", conf->servers[i]->name);
+    setsockopt(conn_fds[i], SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(struct timeval));
   }
 }
 
