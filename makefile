@@ -4,7 +4,7 @@ INCLUDE = /usr/lib
 LIBS = -lcrypto -lssl
 OBJS = 
 CFLAGS = -g -Wunused
-all: clean clear dfs dfc start run
+all: clean dfs dfc start run
 
 dfs:
 	$(CC) -o bin/dfs -Iheaders headers/*.c dfs.c $(CFLAGS) $(LIBS)

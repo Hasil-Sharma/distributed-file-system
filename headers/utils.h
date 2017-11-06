@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+
 #ifndef UTILS_H
 #define UTILS_H
 
@@ -16,6 +18,7 @@
 #define COLON_STR ":"
 #define ROOT_FOLDER_STR "/"
 #define ROOT_FOLDER_CHR '/'
+
 enum Constants {
   EXTRACT_LOCAL = 0,
   EXTRACT_REMOTE = 1,
@@ -71,9 +74,10 @@ char* get_sub_string(char*, char*);
 char* get_token(char*, char*, int);
 char* get_sub_string_after(char*, char*);
 bool compare_str(char*, char*);
+bool check_complete(bool*);
 int check_file_name_exist(char file_names[][100], char*, int);
 char* get_file_name_pointer_from_path(char*);
-void get_files_in_folder(char*, server_chunks_info_struct*);
+void get_files_in_folder(char*, server_chunks_info_struct*, char*);
 void extract_file_name_and_folder(char*, file_attr_struct*, int);
 void print_chunks_info_struct(chunk_info_struct*);
 void print_server_chunks_info_struct(server_chunks_info_struct*);
@@ -83,6 +87,7 @@ bool compare_user_struct(user_struct*, user_struct*);
 bool check_user_struct(user_struct**);
 void free_user_struct(user_struct*);
 int get_md5_sum_hash_mod(char*);
+void read_into_split_from_file(char*, split_struct*);
 void print_hash_value(u_char*, int);
 void write_split_struct_to_file(split_struct*, char*, char*);
 void free_file_split_struct(file_split_struct*);

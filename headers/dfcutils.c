@@ -6,9 +6,31 @@ int file_pieces_mapping[4][4][2] = {
   { { 3, 4 }, { 4, 1 }, { 1, 2 }, { 2, 3 } },
   { { 2, 3 }, { 3, 4 }, { 4, 1 }, { 1, 2 } }
 };
+
+void setup_dfc_to_dfs_connections(int** conn_fds, dfc_conf_struct* conf)
+{
+  /* Setup dfc to dfs TCP Connections, after allocating the number of servers connections
+   */
+  (*conn_fds) = (int*)malloc(conf->server_count * sizeof(int));
+  create_dfc_to_dfs_connections(*conn_fds, conf);
+}
+
+void create_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
+{
+  /* Creating a socket connection and adding timeout of 1 sec on recv
+   */
+  int i;
+  for (i = 0; i < conf->server_count; i++) {
+    conn_fds[i] = get_dfc_socket(conf->servers[i]);
+    if (conn_fds[i] == -1)
+      DEBUGSS("Couldn't Connect to Server", conf->servers[i]->name);
+  }
+}
+
 int get_dfc_socket(dfc_server_struct* server)
 {
-
+  /* Create a client socket with timeout of 1 sec on recv
+   */
   int sockfd;
   struct sockaddr_in serv_addr;
   struct timeval tv;
@@ -19,7 +41,11 @@ int get_dfc_socket(dfc_server_struct* server)
     exit(1);
   }
 
-  setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(struct timeval));
+  if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(struct timeval)) < 0) {
+    perror("Unable to set timeout");
+    return -1;
+  }
+
   memset(&serv_addr, 0, sizeof(serv_addr));
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_port = htons(server->port);
@@ -33,12 +59,76 @@ int get_dfc_socket(dfc_server_struct* server)
     perror("Connection Failed");
     return -1;
   }
-  DEBUGSS("Connected to Server", server->name);
+  //DEBUGSS("Connected to Server", server->name);
   return sockfd;
+}
+
+void dfc_command_builder(char* buffer, const char* format, file_attr_struct* file_attr, user_struct* user, int flag)
+{
+  char *file_folder, *file_name;
+  file_folder = file_attr->remote_file_folder;
+  file_name = file_attr->remote_file_name;
+
+  file_folder = (strlen(file_folder) > 0) ? file_folder : "NULL";
+  file_name = (strlen(file_name) > 0) ? file_name : "NULL";
+  sprintf(buffer, format,
+      flag,
+      user->username,
+      user->password,
+      file_folder,
+      file_name);
+
+  //DEBUGSS("Command Built", buffer);
+}
+
+void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct* conf)
+{
+  /* handles command on basis of the flag
+   */
+
+  file_attr_struct file_attr;
+  memset(&file_attr, 0, sizeof(file_attr));
+  char buffer_to_send[MAX_SEG_SIZE];
+  memset(buffer_to_send, 0, sizeof(buffer_to_send));
+  if (dfc_command_validator(buffer, flag, &file_attr)) {
+
+    if (flag == LIST_FLAG) {
+
+      //DEBUGS("LIST Validation Done");
+      dfc_command_builder(buffer_to_send, LIST_TEMPLATE, &file_attr, conf->user, flag);
+
+    } else if (flag == GET_FLAG) {
+
+      //DEBUGS("GET Validation Done");
+      if (strlen(file_attr.remote_file_name) == 0) {
+        strcpy(file_attr.remote_file_name, file_attr.local_file_name);
+      }
+      dfc_command_builder(buffer_to_send, GET_TEMPLATE, &file_attr, conf->user, flag);
+
+    } else if (flag == PUT_FLAG) {
+
+      //DEBUGS("PUT Validation Done");
+      if (strlen(file_attr.remote_file_name) == 0) {
+        strcpy(file_attr.remote_file_name, file_attr.local_file_name);
+      }
+      dfc_command_builder(buffer_to_send, PUT_TEMPLATE, &file_attr, conf->user, flag);
+
+    } else if (flag == MKDIR_FLAG) {
+
+      //DEBUGS("MKDIR Validation Done");
+      dfc_command_builder(buffer_to_send, MKDIR_TEMPLATE, &file_attr, conf->user, flag);
+    }
+
+    dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, &file_attr, flag);
+  } else {
+    fprintf(stderr, "Failed to validate Command");
+  }
 }
 
 bool dfc_command_validator(char* buffer, int flag, file_attr_struct* file_attr)
 {
+  /* Tests whether command and its arguments entered are valid or not
+   */
   char *temp, temp_buffer[MAXCHARBUFF];
   int buffer_len, char_count, i;
   buffer_len = strlen(buffer);
@@ -69,8 +159,7 @@ bool dfc_command_validator(char* buffer, int flag, file_attr_struct* file_attr)
       memset(temp_buffer, 0, sizeof(temp_buffer));
       strcpy(temp_buffer, temp);
       free(temp);
-      extract_file_name_and_folder(temp_buffer, file_attr,
-          (i == 0) ? EXTRACT_LOCAL : EXTRACT_REMOTE);
+      extract_file_name_and_folder(temp_buffer, file_attr, (i == 0) ? EXTRACT_LOCAL : EXTRACT_REMOTE);
     }
   } else if (flag == MKDIR_FLAG) {
     if (char_count != 0) {
@@ -84,81 +173,22 @@ bool dfc_command_validator(char* buffer, int flag, file_attr_struct* file_attr)
   return true;
 }
 
-void dfc_command_builder(char* buffer, const char* format, file_attr_struct* file_attr, user_struct* user, int flag)
-{
-  char *file_folder, *file_name;
-  file_folder = file_attr->remote_file_folder;
-  file_name = file_attr->remote_file_name;
-
-  file_folder = (strlen(file_folder) > 0) ? file_folder : "NULL";
-  file_name = (strlen(file_name) > 0) ? file_name : "NULL";
-  sprintf(buffer, format,
-      flag,
-      user->username,
-      user->password,
-      file_folder,
-      file_name);
-
-  DEBUGSS("Command Built", buffer);
-}
-
-void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct* conf)
-{
-  file_attr_struct file_attr;
-  memset(&file_attr, 0, sizeof(file_attr));
-  char buffer_to_send[MAX_SEG_SIZE];
-  memset(buffer_to_send, 0, sizeof(buffer_to_send));
-  if (dfc_command_validator(buffer, flag, &file_attr)) {
-
-    if (flag == LIST_FLAG) {
-
-      DEBUGS("LIST Validation Done");
-      dfc_command_builder(buffer_to_send, LIST_TEMPLATE, &file_attr, conf->user, flag);
-
-    } else if (flag == GET_FLAG) {
-
-      DEBUGS("GET Validation Done");
-      if (strlen(file_attr.remote_file_name) == 0) {
-        strcpy(file_attr.remote_file_name, file_attr.local_file_name);
-      }
-      dfc_command_builder(buffer_to_send, GET_TEMPLATE, &file_attr, conf->user, flag);
-
-    } else if (flag == PUT_FLAG) {
-
-      DEBUGS("PUT Validation Done");
-      if (strlen(file_attr.remote_file_name) == 0) {
-        strcpy(file_attr.remote_file_name, file_attr.local_file_name);
-      }
-      dfc_command_builder(buffer_to_send, PUT_TEMPLATE, &file_attr, conf->user, flag);
-
-    } else if (flag == MKDIR_FLAG) {
-
-      DEBUGS("MKDIR Validation Done");
-      dfc_command_builder(buffer_to_send, MKDIR_TEMPLATE, &file_attr, conf->user, flag);
-    }
-
-    dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, &file_attr, flag);
-  } else {
-    fprintf(stderr, "Failed to validate Command");
-  }
-}
-
 bool send_command(int* conn_fds, char* buffer_to_send, int conn_count)
 {
   int i, s_bytes;
   char c;
   bool ret_val = false; // To make sure atleast one server is running
   for (i = 0; i < conn_count; i++) {
-    DEBUGSN("For Server", i + 1);
+    //DEBUGSN("For Server", i + 1);
     if (conn_fds[i] == -1)
       continue;
 
     send_to_socket(conn_fds[i], buffer_to_send, MAX_SEG_SIZE);
-    DEBUGS("Sent done");
+    //DEBUGS("Sent done");
 
     if (recv_from_socket(conn_fds[i], &c, 1) == 0) {
 
-      DEBUGSN("Server Down", i + 1);
+      //DEBUGSN("Server Down", i + 1);
       close(conn_fds[i]);
       conn_fds[i] = -1;
     } else
@@ -174,18 +204,88 @@ void send_file_splits(int socket, file_split_struct* file_split, int mod, int se
   u_char payload_buffer[MAX_SEG_SIZE];
   int file_piece, i, s_bytes;
   split_struct* split;
-  for (i = 0; i < 2; i++) {
+  for (i = 0; i < CHUNKS_PER_SERVER; i++) {
     memset(payload_buffer, 0, sizeof(payload_buffer));
     file_piece = file_pieces_mapping[mod][server_idx][i];
-    DEBUGSN("Uploading to Server", server_idx + 1);
-    DEBUGSN("Uploading piece", file_piece);
+    //DEBUGSN("Uploading to Server", server_idx + 1);
+    //DEBUGSN("Uploading piece", file_piece);
     split = file_split->splits[file_piece - 1];
     assert(split->id == file_piece);
-    DEBUGS("Split Hash_Value");
-    print_hash_value(split->content, split->content_length);
-    DEBUGSN("Split Content Length", split->content_length);
+    //DEBUGS("Split Hash_Value");
+    /*print_hash_value(split->content, split->content_length);*/
+    //DEBUGSN("Split Content Length", split->content_length);
     write_split_to_socket_as_stream(socket, split);
   }
+}
+
+int fetch_remote_file_info(int* conn_fds, int conn_count, server_chunks_collate_struct* server_chunks_collate)
+{
+  int i, j, payload_size, mod = -1;
+  u_char* payload;
+  server_chunks_info_struct server_chunks_info;
+  chunk_info_struct* chunk_info;
+  for (i = 0; i < conn_count; i++) {
+    if (conn_fds[i] == -1)
+      continue;
+
+    recv_int_value_socket(conn_fds[i], &payload_size);
+    /*//DEBUGSN("SERVER", i + 1);*/
+    /*//DEBUGSN("Payload Size", payload_size);*/
+
+    payload = (u_char*)malloc(sizeof(u_char) * payload_size);
+    memset(payload, 0, sizeof(payload));
+    recv_from_socket(conn_fds[i], payload, payload_size);
+    decode_server_chunks_info_struct_from_buffer(payload, &server_chunks_info);
+    /*print_server_chunks_info_struct(&server_chunks_info);*/
+    insert_to_server_chunks_collate_struct(server_chunks_collate, &server_chunks_info);
+    chunk_info = server_chunks_info.chunk_info;
+    /*print_chunks_info_struct(chunk_info);*/
+    for (j = 0; mod < 0; j++) {
+      if ((file_pieces_mapping[j][i][0] == chunk_info->chunks[0] && file_pieces_mapping[j][i][1] == chunk_info->chunks[1]) || (file_pieces_mapping[j][i][0] == chunk_info->chunks[1] && file_pieces_mapping[j][i][1] == chunk_info->chunks[0])) {
+        /*//DEBUGSN("Matched mod", j);*/
+        mod = j;
+      }
+    }
+    free(payload);
+  }
+
+  return mod;
+}
+
+void fetch_remote_splits(int* conn_fds, int conn_count, file_split_struct* file_split, int mod)
+{
+  int i, socket, split_id, server;
+  bool flag;
+  u_char proceed_sig = (u_char)PROCEED_SIG;
+
+  //DEBUGS("Fetching Remote Split");
+  for (i = 0; i < conn_count; i++) {
+    flag = false;
+    socket = conn_fds[i];
+    server = i + 1;
+    if (socket == -1) {
+      //DEBUGSN("Server is down", i + 1);
+      server = (i != 0) ? i : conn_count;
+      socket = conn_fds[(i != 0) ? (i - 1) : conn_count - 1];
+      flag = (i == 0) ? true : false;
+      if (i != 0) {
+        // Socket is expeciing a sig
+        send_to_socket(socket, &proceed_sig, sizeof(u_char));
+      }
+    }
+    split_id = file_pieces_mapping[mod][i][0];
+    fprintf(stderr, "Fetching split: %d from Server: %d\n", split_id, server);
+    send_int_value_socket(socket, split_id);
+
+    file_split->split_count++;
+    file_split->splits[split_id - 1] = (split_struct*)malloc(sizeof(split_struct));
+    write_split_from_socket_as_stream(socket, file_split->splits[split_id - 1]);
+
+    if (flag)
+      send_to_socket(socket, &proceed_sig, sizeof(u_char));
+  }
+
+  send_signal(conn_fds, conn_count, (u_char)RESET_SIG);
 }
 
 void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_attr_struct* attr, int flag)
@@ -196,50 +296,49 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
   int mod, i, payload_size;
   u_char* payload;
   file_split_struct file_split;
-  server_chunks_info_struct server_chunks_info;
   server_chunks_collate_struct server_chunks_collate;
-
   memset(file_path, 0, sizeof(file_path));
-  memset(&server_chunks_info, 0, sizeof(server_chunks_info));
+
   memset(&server_chunks_collate, 0, sizeof(server_chunks_collate));
+  memset(&file_split, 0, sizeof(file_split_struct));
 
   if (flag == LIST_FLAG) {
 
     if (!send_flag)
       perror("Unable to send LIST");
-    DEBUGS("Sent LIST");
-
-    for (i = 0; i < conn_count; i++) {
-      if (conn_fds[i] == -1)
-        continue;
-
-      recv_int_value_socket(conn_fds[i], &payload_size);
-      DEBUGSN("SERVER", i + 1);
-      DEBUGSN("Payload Size", payload_size);
-
-      payload = (u_char*)malloc(sizeof(u_char) * payload_size);
-      memset(payload, 0, sizeof(payload));
-      recv_from_socket(conn_fds[i], payload, payload_size);
-      decode_server_chunks_info_struct_from_buffer(payload, &server_chunks_info);
-      print_server_chunks_info_struct(&server_chunks_info);
-      insert_to_server_chunks_collate_struct(&server_chunks_collate, &server_chunks_info);
-      free(payload);
-    }
-
-    print_server_chunks_collate_struct(&server_chunks_collate);
+    /*//DEBUGS("Sent LIST");*/
+    mod = fetch_remote_file_info(conn_fds, conn_count, &server_chunks_collate);
+    /*print_server_chunks_collate_struct(&server_chunks_collate);*/
     get_output_list_command(&server_chunks_collate);
   } else if (flag == GET_FLAG) {
 
     if (!send_flag)
       perror("Unable to send GET");
 
-    DEBUGS("Sent GET");
+    /*//DEBUGS("Sent GET");*/
+    mod = fetch_remote_file_info(conn_fds, conn_count, &server_chunks_collate);
+    /*//DEBUGSN("Mod", mod);*/
+    /*print_server_chunks_collate_struct(&server_chunks_collate);*/
+
+    if (!check_complete((&server_chunks_collate)->chunks[0])) {
+      printf("File is incomplete\n");
+      send_signal(conn_fds, conn_count, (u_char)RESET_SIG);
+    } else {
+      /*//DEBUGS("File is complete and can be fetched");*/
+      send_signal(conn_fds, conn_count, (u_char)PROCEED_SIG);
+      file_split.file_name = strdup(attr->local_file_name);
+      fetch_remote_splits(conn_fds, conn_count, &file_split, mod);
+
+      combine_file_from_pieces(attr->local_file_folder, &file_split);
+      /*print_file_split_struct(&file_split);*/
+    }
+
   } else if (flag == PUT_FLAG) {
 
     if (!send_flag)
       perror("Unable to send PUT");
 
-    DEBUGS("Sent PUT");
+    //DEBUGS("Sent PUT");
     sprintf(file_path, "%s%s", attr->local_file_folder, attr->local_file_name);
     mod = get_md5_sum_hash_mod(file_path);
     split_file_to_pieces(file_path, &file_split, conn_count);
@@ -256,7 +355,7 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
     if (!send_flag)
       perror("Unable to send MKDIR");
 
-    DEBUGS("Sent MKDIR");
+    //DEBUGS("Sent MKDIR");
   }
 }
 
@@ -278,18 +377,6 @@ void get_output_list_command(server_chunks_collate_struct* server_chunks_collate
       printf("\n");
     else
       printf(" [INCOMPLETE]\n");
-  }
-}
-void create_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
-{
-  int i;
-  struct timeval tv;
-  tv.tv_sec = 1;
-  for (i = 0; i < conf->server_count; i++) {
-    conn_fds[i] = get_dfc_socket(conf->servers[i]);
-    if (conn_fds[i] == -1)
-      DEBUGSS("Couldn't Connect to Server", conf->servers[i]->name);
-    setsockopt(conn_fds[i], SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(struct timeval));
   }
 }
 
@@ -326,14 +413,11 @@ bool auth_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
   return ans;
 }
 
-void setup_dfc_to_dfs_connections(int** conn_fds, dfc_conf_struct* conf)
-{
-  (*conn_fds) = (int*)malloc(conf->server_count * sizeof(int));
-  create_dfc_to_dfs_connections(*conn_fds, conf);
-}
-
 void read_dfc_conf(char* file_path, dfc_conf_struct* conf)
 {
+
+  /* Reading configurations from the config file
+   */
   FILE* fp;
   char line[MAXFILEBUFF];
   int line_len;
@@ -417,7 +501,7 @@ bool split_file_to_pieces(char* file_path, file_split_struct* file_split, int n)
   file_split->file_name = strdup(file_path);
 
   file_size = (long long)sb.st_size;
-  DEBUGSN("File Size read", (int)file_size);
+  //DEBUGSN("File Size read", (int)file_size);
 
   split_size = file_size / n; // First n - 1 splits will have split_size number of bytes
   rem_size = file_size % n;   // Last nth split will have split_size + rem_size number of bytes
@@ -447,6 +531,7 @@ bool combine_file_from_pieces(char* file_path, file_split_struct* file_split)
   memset(file_name, 0, sizeof(file_name));
   sprintf(file_name, "%s/%s", file_path, file_split->file_name);
 
+  DEBUGSS("Writing to file", file_name);
   if ((fp = fopen(file_name, "wb")) <= 0) {
     fprintf(stderr, "Unable to open file: %s\n", file_path);
     return false;
@@ -463,8 +548,8 @@ void print_dfc_conf_struct(dfc_conf_struct* conf)
 {
   int i;
   dfc_server_struct* ptr;
-  DEBUGSS("Username", conf->user->username);
-  DEBUGSS("Password", conf->user->password);
+  //DEBUGSS("Username", conf->user->username);
+  //DEBUGSS("Password", conf->user->password);
   for (i = 0; i < conf->server_count; i++) {
     ptr = conf->servers[i];
     fprintf(stderr, "DEBUG: Name:%s Address:%s Port:%d\n", ptr->name, ptr->address, ptr->port);

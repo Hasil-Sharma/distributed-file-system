@@ -16,7 +16,7 @@ int main(int argc, char** argv)
   }
   conf_file = argv[1];
   read_dfc_conf(conf_file, &conf);
-  print_dfc_conf_struct(&conf);
+  /*print_dfc_conf_struct(&conf);*/
   setup_dfc_to_dfs_connections(&conn_fds, &conf);
 
   while (true) {

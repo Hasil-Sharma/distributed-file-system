@@ -34,7 +34,31 @@ void insert_to_server_chunks_collate_struct(server_chunks_collate_struct* server
   }
 }
 
+void read_into_split_from_file(char* file_path, split_struct* split)
+{
+  FILE* fp;
+  int i;
+  struct stat sb;
+  long long file_size;
+
+  if ((fp = fopen(file_path, "rb")) <= 0) {
+    fprintf(stderr, "Unable to open file: %s\n", file_path);
+  }
+
+  if (stat(file_path, &sb) == -1) {
+    fprintf(stderr, "Error in getting file size: %s\n", file_path);
+  }
+
+  file_size = (long long)sb.st_size;
+
+  split->content_length = file_size;
+  split->content = (u_char*)malloc(file_size * sizeof(u_char));
+
+  if (fread(split->content, sizeof(u_char), split->content_length, fp) < 0)
+    perror("Error in reading split to split struct");
+}
 int check_file_name_exist(char file_names[][100], char* file_name, int n)
+
 {
   int i;
   for (i = 0; i < n; i++)
@@ -42,7 +66,8 @@ int check_file_name_exist(char file_names[][100], char* file_name, int n)
       return i;
   return -1;
 }
-void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks)
+
+void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks, char* check_file_name)
 {
   int i, chunk_num, chunk_idx, j;
   char temp_folder[strlen(folder) + 2], file_name[MAXCHARBUFF], *temp_ptr_1 = NULL, *temp_ptr_2 = NULL;
@@ -64,12 +89,15 @@ void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks)
   DEBUGSN("Num files", glob_result.gl_pathc);
   assert(glob_result.gl_pathc % 2 == 0);
   server_chunks->chunks = glob_result.gl_pathc / 2 - 1; // removing '.' and '..'
+  if (check_file_name != NULL)
+    server_chunks->chunks = 1;
   server_chunks->chunk_info = (chunk_info_struct*)malloc(server_chunks->chunks * sizeof(chunk_info_struct));
+
   for (i = 0, chunk_idx = -1; i < glob_result.gl_pathc; i++) {
     temp_ptr_1 = get_file_name_pointer_from_path(glob_result.gl_pathv[i]);
     chunk_num = 0;
     // To remove the case of "." and ".."
-    if (strlen(temp_ptr_1) <= 2)
+    if (strlen(temp_ptr_1) < 3)
       continue;
     DEBUGSS("File", temp_ptr_1);
     temp_ptr_2 = strrchr(temp_ptr_1, '.');
@@ -77,6 +105,9 @@ void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks)
     DEBUGSN("Chunk Num", chunk_num);
     *temp_ptr_2 = NULL_CHAR;
     DEBUGSS("File Name", temp_ptr_1 + 1);
+
+    if (check_file_name != NULL && !compare_str(temp_ptr_1 + 1, check_file_name))
+      continue;
 
     if (!compare_str(temp_ptr_1 + 1, file_name)) {
       strcpy(file_name, temp_ptr_1 + 1);
@@ -89,7 +120,7 @@ void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks)
     server_chunks->chunk_info[chunk_idx].chunks[j++] = chunk_num;
   }
 
-  print_server_chunks_info_struct(server_chunks);
+  /*print_server_chunks_info_struct(server_chunks);*/
 }
 
 void print_server_chunks_info_struct(server_chunks_info_struct* server_chunks)
@@ -103,6 +134,7 @@ void print_server_chunks_info_struct(server_chunks_info_struct* server_chunks)
 
 void print_chunks_info_struct(chunk_info_struct* chunk_info)
 {
+  DEBUGS("Printing chunk info struct");
   int i;
   DEBUGSS("Filename", chunk_info->file_name);
   for (i = 0; i < CHUNKS_PER_SERVER; i++)

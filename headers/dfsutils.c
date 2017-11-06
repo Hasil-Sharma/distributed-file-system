@@ -48,10 +48,10 @@ bool dfs_command_decode_and_auth(char* buffer, const char* format, dfs_recv_comm
       recv_cmd->folder,
       recv_cmd->file_name);
 
-  DEBUGSS("Username", user->username);
-  DEBUGSS("Password", user->password);
-  DEBUGSS("Folder", recv_cmd->folder);
-  DEBUGSS("Filename", recv_cmd->file_name);
+  //DEBUGSS("Username", user->username);
+  //DEBUGSS("Password", user->password);
+  //DEBUGSS("Folder", recv_cmd->folder);
+  //DEBUGSS("Filename", recv_cmd->file_name);
 
   return auth_dfs_user(user, conf);
 }
@@ -72,67 +72,69 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
   user = &dfs_recv_command.user;
 
   // receiving the command
-  DEBUGS("Recv the command");
+  //DEBUGS("Wating to recv the command");
   recv_from_socket(socket, buffer, MAX_SEG_SIZE);
 
   c = 'Y';
   // This to let client know about the non-existent servers
-  DEBUGS("Sending the Alive ACK");
+  //DEBUGS("Sending the Alive ACK");
   send_to_socket(socket, &c, 1);
 
-  DEBUGSS("Command Received", buffer);
+  //DEBUGSS("Command Received", buffer);
   sscanf(buffer, GENERIC_TEMPATE, &dfs_recv_command.flag, temp_buffer);
-  /*DEBUGSN("Flag", dfs_recv_command.flag);*/
+  /*//DEBUGSN("Flag", dfs_recv_command.flag);*/
   flag = dfs_recv_command.flag;
 
   if (flag == LIST_FLAG) {
 
-    DEBUGS("Command Received is LIST");
+    //DEBUGS("Command Received is LIST");
     if (!dfs_command_decode_and_auth(buffer, LIST_TEMPLATE, &dfs_recv_command, conf)) {
-      DEBUGSS("Failed to authenticate", user->username);
+      //DEBUGSS("Failed to authenticate", user->username);
     }
 
-    DEBUGSS("Authenticated", user->username);
+    //DEBUGSS("Authenticated", user->username);
 
   } else if (flag == GET_FLAG) {
 
-    DEBUGS("Command Received is GET");
+    //DEBUGS("Command Received is GET");
     if (!dfs_command_decode_and_auth(buffer, GET_TEMPLATE, &dfs_recv_command, conf)) {
-      DEBUGSS("Failed to authenticate", user->username);
+      //DEBUGSS("Failed to authenticate", user->username);
     }
 
-    DEBUGSS("Authenticated", user->username);
+    //DEBUGSS("Authenticated", user->username);
   } else if (flag == PUT_FLAG) {
 
-    DEBUGS("Command Received is PUT");
+    //DEBUGS("Command Received is PUT");
     if (!dfs_command_decode_and_auth(buffer, PUT_TEMPLATE, &dfs_recv_command, conf)) {
-      DEBUGSS("Failed to authenticate", user->username);
+      //DEBUGSS("Failed to authenticate", user->username);
     }
 
-    DEBUGSS("Authenticated", user->username);
+    //DEBUGSS("Authenticated", user->username);
   } else if (flag == MKDIR_FLAG) {
 
-    DEBUGS("Command Received is MKDIR");
+    //DEBUGS("Command Received is MKDIR");
     if (!dfs_command_decode_and_auth(buffer, MKDIR_TEMPLATE, &dfs_recv_command, conf)) {
-      DEBUGSS("Failed to authenticate", user->username);
+      //DEBUGSS("Failed to authenticate", user->username);
     }
 
-    DEBUGSS("Authenticated", user->username);
+    //DEBUGSS("Authenticated", user->username);
   }
 
   dfs_command_exec(socket, &dfs_recv_command, conf, flag);
 
   free(dfs_recv_command.user.username);
   free(dfs_recv_command.user.password);
+
+  //DEBUGS("Command Execution Done");
 }
 
 bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_struct* conf, int flag)
 {
-  char char_buffer[2 * MAXCHARBUFF];
+  char char_buffer[2 * MAXCHARBUFF], signal;
   u_char payload_buffer[MAX_SEG_SIZE], *u_char_buffer;
   server_chunks_info_struct server_chunks_info;
   split_struct splits[2];
-  int len, i, r_bytes, size_of_payload;
+  int len, i, r_bytes, size_of_payload, split_id;
 
   memset(char_buffer, 0, sizeof(char_buffer));
   memset(&splits, 0, sizeof(splits));
@@ -143,42 +145,70 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
   if (char_buffer[len - 1] == ROOT_FOLDER_CHR && char_buffer[len - 2] == ROOT_FOLDER_CHR)
     char_buffer[--len] = NULL_CHAR;
 
-  DEBUGSS("Generated folder path", char_buffer);
+  //DEBUGSS("Generated folder path", char_buffer);
 
   if (flag == LIST_FLAG) {
-    get_files_in_folder(char_buffer, &server_chunks_info);
-    print_server_chunks_info_struct(&server_chunks_info);
 
+    get_files_in_folder(char_buffer, &server_chunks_info, NULL);
+    /*print_server_chunks_info_struct(&server_chunks_info);*/
     size_of_payload = INT_SIZE + server_chunks_info.chunks * CHUNK_INFO_STRUCT_SIZE;
-
-    // First send the size_of_payload
-
     send_int_value_socket(socket, size_of_payload);
     u_char_buffer = (u_char*)malloc(sizeof(u_char) * size_of_payload);
     encode_server_chunks_info_struct_to_buffer(u_char_buffer, &server_chunks_info);
     send_to_socket(socket, u_char_buffer, size_of_payload);
     free(u_char_buffer);
+
   } else if (flag == GET_FLAG) {
+
+    get_files_in_folder(char_buffer, &server_chunks_info, recv_cmd->file_name);
+    /*print_server_chunks_info_struct(&server_chunks_info);*/
+
+    size_of_payload = INT_SIZE + server_chunks_info.chunks * CHUNK_INFO_STRUCT_SIZE;
+    send_int_value_socket(socket, size_of_payload);
+    u_char_buffer = (u_char*)malloc(sizeof(u_char) * size_of_payload);
+    encode_server_chunks_info_struct_to_buffer(u_char_buffer, &server_chunks_info);
+    send_to_socket(socket, u_char_buffer, size_of_payload);
+    free(u_char_buffer);
+    recv_signal(socket, &signal);
+    fprintf(stderr, "Recv sig: %c\n", (char)signal);
+
+    if (signal == PROCEED_SIG) {
+
+      //DEBUGS("Client Request for file Split");
+      while (true) {
+        recv_int_value_socket(socket, &split_id);
+        //DEBUGSN("Split #", split_id);
+
+        sprintf(char_buffer + len, ".%s.%d", recv_cmd->file_name, split_id);
+        //DEBUGSS("Reading split from path", char_buffer);
+
+        splits->id = split_id;
+        read_into_split_from_file(char_buffer, &splits[0]);
+        /*print_split_struct(splits);*/
+        write_split_to_socket_as_stream(socket, splits);
+        recv_signal(socket, &signal);
+        if (signal == RESET_SIG)
+          break;
+      }
+
+    } else if (signal == RESET_SIG) {
+
+      //DEBUGS("Client Doesn't want file");
+
+    } else {
+
+      //DEBUGS("Unknown Sig!!!");
+    }
   } else if (flag == PUT_FLAG) {
 
     create_dfs_directory(char_buffer);
     for (i = 0; i < 2; i++) {
 
       memset(payload_buffer, 0, sizeof(payload_buffer));
-      /*r_bytes = 0;*/
-      /*while (r_bytes != MAX_SEG_SIZE) {*/
-      /*if ((r_bytes += recv(socket, payload_buffer, MAX_SEG_SIZE, 0)) <= 0)*/
-      /*perror("Failed to receive file_split");*/
-      /*DEBUGSN("Bytes Received: dfs_command_exec", r_bytes);*/
-      /*}*/
       write_split_from_socket_as_stream(socket, &splits[i]);
-      DEBUGS("Split struct read complete");
-
-      DEBUGS("Md5 hash Sum");
-      print_hash_value(splits[i].content, splits[i].content_length);
-      /*decode_split_struct_from_buffer(payload_buffer, &splits[i]);*/
-      /*DEBUGSS("Payload Buffer", (char*)payload_buffer);*/
-      /*DEBUGSN("Received file_split id", splits[i].id);*/
+      //DEBUGS("Split struct read complete");
+      /*DEBUGS("Md5 hash Sum");*/
+      /*print_hash_value(splits[i].content, splits[i].content_length);*/
       write_split_struct_to_file(&splits[i], char_buffer, recv_cmd->file_name);
     }
   } else if (flag == MKDIR_FLAG) {
@@ -191,11 +221,11 @@ bool auth_dfs_user(user_struct* user, dfs_conf_struct* conf)
   int i;
   for (i = 0; i < conf->user_count; i++) {
     if (compare_user_struct(user, conf->users[i])) {
-      DEBUGSS("auth_dfs_user: Authenticated", user->username);
+      //DEBUGSS("auth_dfs_user: Authenticated", user->username);
       return true;
     }
   }
-  DEBUGSS("Couldn't Authenticate", user->username);
+  //DEBUGSS("Couldn't Authenticate", user->username);
   return false;
 }
 
@@ -244,7 +274,7 @@ void create_dfs_directory(char* path)
     len += folder - temp;
     temp = folder;
     folder = strndup(path, len);
-    DEBUGSS("Parsed Folder", folder);
+    //DEBUGSS("Parsed Folder", folder);
     if (stat(folder, &st) == -1)
       mkdir(folder, 0755);
     free(folder);

@@ -24,11 +24,15 @@ enum CommonConstants {
   CHUNK_WRITE_FLAG = 1,
   FINAL_WRITE_FLAG = 2,
   INT_SIZE = 4,
+  RESET_SIG = 'N',
+  PROCEED_SIG = 'Y',
   CHUNK_INFO_STRUCT_SIZE = MAXCHARBUFF + NUM_SERVER * INT_SIZE
 };
 
 int encode_user_struct(char*, user_struct*);
 void send_int_value_socket(int, int);
+void send_signal(int*, int, u_char);
+void recv_signal(int, u_char*);
 void recv_int_value_socket(int, int*);
 int send_to_socket(int, u_char*, int);
 int recv_from_socket(int, u_char*, int);
