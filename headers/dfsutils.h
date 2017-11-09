@@ -15,9 +15,13 @@
 #ifndef DFSUTILS_H
 #define DFSUTILS_H
 
+#define FOLDER_NOT_FOUND_ERROR "Requested folder does not exist"
+#define FOLDER_EXISTS_ERROR "Requested folder already exists"
 enum DFSConstants {
   MAXUSERS = 10,
-  MAXCONNECTION = 10
+  MAXCONNECTION = 10,
+  FOLDER_NOT_FOUND = 1,
+  FOLDER_EXISTS = 2
 };
 
 typedef struct dfs_conf_struct {
@@ -35,6 +39,8 @@ typedef struct dfs_recv_command_struct {
 
 int get_dfs_socket(int);
 bool auth_dfs_user(user_struct*, dfs_conf_struct*);
+void send_error_helper(int, const char*);
+void send_error(int, int);
 void read_dfs_conf(char*, dfs_conf_struct*);
 void insert_dfs_user_conf(char*, dfs_conf_struct*);
 void dfs_command_accept(int, dfs_conf_struct*);

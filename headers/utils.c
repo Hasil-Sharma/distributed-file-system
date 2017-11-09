@@ -14,7 +14,7 @@ char* get_sub_string(char* haystack, char* needle)
 
 void insert_to_server_chunks_collate_struct(server_chunks_collate_struct* server_chunks_collate, server_chunks_info_struct* server_chunks_info)
 {
-  int i, j, k, chunk_num, match_count = 0;
+  int i, j, k, chunk_num;
   for (i = 0; i < server_chunks_info->chunks; i++) {
 
     j = check_file_name_exist(server_chunks_collate->file_names, server_chunks_info->chunk_info[i].file_name, server_chunks_collate->num_files);

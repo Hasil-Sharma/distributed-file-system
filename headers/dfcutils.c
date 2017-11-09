@@ -77,7 +77,7 @@ int get_dfc_socket(dfc_server_struct* server)
   return sockfd;
 }
 
-void dfc_command_builder(char* buffer, const char* format, file_attr_struct* file_attr, user_struct* user, int flag)
+bool dfc_command_builder(char* buffer, const char* format, file_attr_struct* file_attr, user_struct* user, int flag)
 {
   char *file_folder, *file_name;
 
@@ -93,22 +93,27 @@ void dfc_command_builder(char* buffer, const char* format, file_attr_struct* fil
 
     file_folder = (strlen(file_folder) > 0) ? file_folder : ROOT_FOLDER_STR;
 
-    // TODO: File name in GET cannot be null
-    file_name = (strlen(file_name) > 0) ? file_name : "NULL";
+    // File name in GET cannot be null
+    if (strlen(file_name) == 0)
+      return false;
 
   } else if (flag == PUT_FLAG) {
 
     file_folder = (strlen(file_folder) > 0) ? file_folder : ROOT_FOLDER_STR;
-
-    // TODO: File name in PUT cannot be null
-    file_name = (strlen(file_name) > 0) ? file_name : "NULL";
+    // File name in PUT cannot be null
+    if (strlen(file_name) == 0)
+      return false;
   } else if (flag == MKDIR_FLAG) {
 
-    // TODO: File folder name cannot be null
-    file_folder = (strlen(file_folder) > 0) ? file_folder : "NULL";
+    // File folder name cannot be null
+    if (strlen(file_folder) == 0)
+      return false;
 
-    // TODO: There should be no file_name but sending one for easy of parsing later
-    file_name = (strlen(file_name) > 0) ? file_name : "NULL";
+    // There should be no file_name but sending one for easy of parsing later
+
+    if (strlen(file_name) > 0)
+      return false;
+    file_name = "NULL";
   }
 
   sprintf(buffer, format,
@@ -119,6 +124,7 @@ void dfc_command_builder(char* buffer, const char* format, file_attr_struct* fil
       file_name);
 
   DEBUGSS("Command Built", buffer);
+  return true;
 }
 
 void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct* conf)
@@ -138,31 +144,43 @@ void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct*
     DEBUGS("Building the command to be send");
     if (flag == LIST_FLAG) {
 
-      dfc_command_builder(buffer_to_send, LIST_TEMPLATE, &file_attr, conf->user, flag);
+      if (!dfc_command_builder(buffer_to_send, LIST_TEMPLATE, &file_attr, conf->user, flag)) {
+        fprintf(stderr, "Failed to build command\n");
+      }
 
     } else if (flag == GET_FLAG) {
 
       if (strlen(file_attr.remote_file_name) == 0) {
         strcpy(file_attr.remote_file_name, file_attr.local_file_name);
       }
-      dfc_command_builder(buffer_to_send, GET_TEMPLATE, &file_attr, conf->user, flag);
+      if (!dfc_command_builder(buffer_to_send, GET_TEMPLATE, &file_attr, conf->user, flag)) {
+        fprintf(stderr, "Failed to build command\n");
+      }
 
     } else if (flag == PUT_FLAG) {
 
       if (strlen(file_attr.remote_file_name) == 0) {
         strcpy(file_attr.remote_file_name, file_attr.local_file_name);
       }
-      dfc_command_builder(buffer_to_send, PUT_TEMPLATE, &file_attr, conf->user, flag);
+      if (!dfc_command_builder(buffer_to_send, PUT_TEMPLATE, &file_attr, conf->user, flag)) {
+        fprintf(stderr, "Failed to build command\n");
+      }
 
     } else if (flag == MKDIR_FLAG) {
 
-      dfc_command_builder(buffer_to_send, MKDIR_TEMPLATE, &file_attr, conf->user, flag);
+      if (!dfc_command_builder(buffer_to_send, MKDIR_TEMPLATE, &file_attr, conf->user, flag)) {
+        fprintf(stderr, "Failed to build command\n");
+      }
     }
 
+    DEBUGS("Creating Connections");
+    create_dfc_to_dfs_connections(conn_fds, conf);
     DEBUGS("Executing the command on remote servers");
     dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, &file_attr, flag);
+    DEBUGS("Tearing down connections");
+    tear_dfc_to_dfs_connections(conn_fds, conf);
   } else {
-    fprintf(stderr, "Failed to validate Command");
+    fprintf(stderr, "Failed to validate Command\n");
   }
 }
 
@@ -172,7 +190,7 @@ bool dfc_command_validator(char* buffer, int flag, file_attr_struct* file_attr)
    * Buffer is what remains after removing the Command and consecutive space except in LIST
    */
 
-  // TODO: Add condition for each command what should be NULL and what not
+  // Add condition for each command what should be NULL and what not
   char *temp, temp_buffer[MAXCHARBUFF];
   int buffer_len, char_count, i;
   buffer_len = strlen(buffer);
@@ -293,6 +311,10 @@ int fetch_remote_file_info(int* conn_fds, int conn_count, server_chunks_collate_
     // Receive the size of packet form server
     recv_int_value_socket(conn_fds[i], &payload_size);
 
+    /*if (payload_size == -1) {*/
+    /*DEBUGS("Error in fetching remote file info");*/
+    /*fetch_and_print_error(conn_fds[i]);*/
+    /*}*/
     payload = (u_char*)malloc(sizeof(u_char) * payload_size);
     memset(payload, 0, sizeof(payload));
 
@@ -345,7 +367,7 @@ void fetch_remote_splits(int* conn_fds, int conn_count, file_split_struct* file_
       }
     }
     split_id = file_pieces_mapping[mod][i][0];
-    fprintf(stderr, "Fetching split: %d from Server: %d\n", split_id, server);
+    /*fprintf(stderr, "Fetching split: %d from Server: %d\n", split_id, server);*/
     send_int_value_socket(socket, split_id);
 
     file_split->split_count++;
@@ -361,13 +383,11 @@ void fetch_remote_splits(int* conn_fds, int conn_count, file_split_struct* file_
 
 void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_attr_struct* attr, int flag)
 {
-  bool send_flag;
+  bool send_flag, error_flag;
   char file_path[MAXCHARBUFF];
-  int mod, i, payload_size;
-  u_char* payload;
+  int mod, i, c;
   file_split_struct file_split;
   server_chunks_collate_struct server_chunks_collate;
-
   memset(file_path, 0, sizeof(file_path));
   memset(&server_chunks_collate, 0, sizeof(server_chunks_collate));
   memset(&file_split, 0, sizeof(file_split_struct));
@@ -385,6 +405,17 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
     return;
   }
 
+  for (i = 0, error_flag = false; i < conn_count; i++) {
+    recv_int_value_socket(conn_fds[i], &c);
+    if (c == -1) {
+      DEBUGS("Some Error has occured");
+      error_flag = true;
+      fetch_and_print_error(conn_fds[i]);
+    }
+  }
+
+  if (error_flag)
+    return;
   if (flag == LIST_FLAG) {
 
     DEBUGS("Fetching remote file(s) info from all the servers");
@@ -397,6 +428,10 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
     // Fetch the file into from remote server, server_chunks_collate only has info of one file across all servers
     DEBUGS("Fetching remote file(s) info from all the servers");
     mod = fetch_remote_file_info(conn_fds, conn_count, &server_chunks_collate);
+
+    if (mod < 0) {
+      return;
+    }
     /*print_server_chunks_collate_struct(&server_chunks_collate);*/
 
     DEBUGS("Checking whether the file is complete");

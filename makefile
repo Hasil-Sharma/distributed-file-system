@@ -42,5 +42,7 @@ ds:
 	gdb -tui bin/dfs --args bin/dfs /DFS1 10001
 
 client:
+	rm bin/dfc
+	$(CC) -o bin/dfc -Iheaders headers/*.c dfc.c $(CFLAGS) $(LIBS)
 	bin/dfc conf/dfc.conf
 

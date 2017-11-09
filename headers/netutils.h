@@ -29,6 +29,7 @@ enum CommonConstants {
   CHUNK_INFO_STRUCT_SIZE = MAXCHARBUFF + NUM_SERVER * INT_SIZE
 };
 
+void fetch_and_print_error(int);
 int encode_user_struct(char*, user_struct*);
 void send_int_value_socket(int, int);
 void send_signal(int*, int, u_char);

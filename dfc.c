@@ -28,9 +28,10 @@ int main(int argc, char** argv)
     fgets(buffer, MAXFILEBUFF, stdin);
     buffer_size = strlen(buffer);
 
-    DEBUGS("Setting up connections with remote servers");
-    setup_dfc_to_dfs_connections(&conn_fds, &conf);
+    /*DEBUGS("Setting up connections with remote servers");*/
+    /*setup_dfc_to_dfs_connections(&conn_fds, &conf);*/
 
+    conn_fds = (int*)malloc(conf.server_count * sizeof(int));
     if (buffer[buffer_size - 1] == NEW_LINE_CHAR)
       buffer[--buffer_size] = NULL_CHAR;
 
@@ -60,8 +61,6 @@ int main(int argc, char** argv)
     }
     memset(buffer, 0, sizeof(buffer));
 
-    DEBUGS("Tearing down connections with remote servers");
-    tear_dfc_to_dfs_connections(conn_fds, &conf);
     free(conn_fds);
   }
   free_dfc_conf_struct(&conf);

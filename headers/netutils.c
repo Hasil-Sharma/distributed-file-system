@@ -1,5 +1,16 @@
 #include "netutils.h"
 
+void fetch_and_print_error(int socket)
+{
+  int payload_size;
+  u_char* payload;
+  recv_int_value_socket(socket, &payload_size);
+
+  payload = (u_char*)malloc((payload_size + 1) * sizeof(u_char));
+  recv_from_socket(socket, payload, payload_size);
+  payload[payload_size] = NULL_CHAR;
+  printf("Error Message: %s\n", (char*)payload);
+}
 void send_int_value_socket(int socket, int value)
 {
   u_char payload[INT_SIZE];
@@ -151,7 +162,7 @@ void write_split_to_socket_as_stream(int socket, split_struct* split)
   // 1 byte for flag 4 bytes for split_id and 4 bytes for content_length
 
   u_char payload_buffer[MAX_SEG_SIZE];
-  int bytes_sent = 0, content_bytes_sent, bytes_to_send_next;
+  int content_bytes_sent, bytes_to_send_next;
 
   memset(payload_buffer, 0, sizeof(payload_buffer));
   payload_buffer[0] = INITIAL_WRITE_FLAG;
@@ -175,7 +186,7 @@ void write_split_to_socket_as_stream(int socket, split_struct* split)
 void write_split_from_socket_as_stream(int socket, split_struct* split)
 {
   u_char payload_buffer[MAX_SEG_SIZE];
-  int read_bytes = 0, content_bytes_recv, bytes_to_recv_next;
+  int content_bytes_recv, bytes_to_recv_next;
 
   memset(payload_buffer, 0, sizeof(payload_buffer));
 

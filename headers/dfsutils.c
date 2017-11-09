@@ -51,6 +51,13 @@ bool dfs_command_decode_and_auth(char* buffer, const char* format, dfs_recv_comm
       recv_cmd->folder,
       recv_cmd->file_name);
 
+  if (compare_str(recv_cmd->folder, "NULL")) {
+    memset(recv_cmd->folder, 0, sizeof(recv_cmd->folder));
+  }
+
+  if (compare_str(recv_cmd->file_name, "NULL")) {
+    memset(recv_cmd->file_name, 0, sizeof(recv_cmd->file_name));
+  }
   //DEBUGSS("Username", user->username);
   //DEBUGSS("Password", user->password);
   //DEBUGSS("Folder", recv_cmd->folder);
@@ -61,8 +68,8 @@ bool dfs_command_decode_and_auth(char* buffer, const char* format, dfs_recv_comm
 
 void dfs_command_accept(int socket, dfs_conf_struct* conf)
 {
-  char buffer[MAX_SEG_SIZE], temp_buffer[MAX_SEG_SIZE], c;
-  int r_bytes, flag, command_size;
+  char buffer[MAX_SEG_SIZE], temp_buffer[MAX_SEG_SIZE];
+  int flag, command_size;
   user_struct* user;
   dfs_recv_command_struct dfs_recv_command;
 
@@ -89,7 +96,7 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
   if (flag == LIST_FLAG) {
     DEBUGS("Command Received is LIST");
     if (!dfs_command_decode_and_auth(buffer, LIST_TEMPLATE, &dfs_recv_command, conf)) {
-      //DEBUGSS("Failed to authenticate", user->username);
+      DEBUGSS("Failed to authenticate", user->username);
     }
 
     //DEBUGSS("Authenticated", user->username);
@@ -98,7 +105,7 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
 
     DEBUGS("Command Received is GET");
     if (!dfs_command_decode_and_auth(buffer, GET_TEMPLATE, &dfs_recv_command, conf)) {
-      //DEBUGSS("Failed to authenticate", user->username);
+      DEBUGSS("Failed to authenticate", user->username);
     }
 
     //DEBUGSS("Authenticated", user->username);
@@ -106,7 +113,7 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
 
     DEBUGS("Command Received is PUT");
     if (!dfs_command_decode_and_auth(buffer, PUT_TEMPLATE, &dfs_recv_command, conf)) {
-      //DEBUGSS("Failed to authenticate", user->username);
+      DEBUGSS("Failed to authenticate", user->username);
     }
 
     //DEBUGSS("Authenticated", user->username);
@@ -114,7 +121,7 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
 
     DEBUGS("Command Received is MKDIR");
     if (!dfs_command_decode_and_auth(buffer, MKDIR_TEMPLATE, &dfs_recv_command, conf)) {
-      //DEBUGSS("Failed to authenticate", user->username);
+      DEBUGSS("Failed to authenticate", user->username);
     }
 
     //DEBUGSS("Authenticated", user->username);
@@ -128,6 +135,32 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
   //DEBUGS("Command Execution Done");
 }
 
+void send_error_helper(int socket, const char* message)
+{
+
+  int payload_size;
+  u_char* payload;
+
+  payload_size = strlen(message);
+  payload = (u_char*)malloc(payload_size * sizeof(u_char));
+  memcpy(payload, message, payload_size);
+  send_int_value_socket(socket, payload_size);
+  send_to_socket(socket, payload, payload_size);
+
+  free(payload);
+}
+void send_error(int socket, int flag)
+{
+
+  if (flag == FOLDER_NOT_FOUND) {
+    send_error_helper(socket, FOLDER_NOT_FOUND_ERROR);
+  } else if (flag == FOLDER_EXISTS) {
+    send_error_helper(socket, FOLDER_EXISTS_ERROR);
+  } else {
+    DEBUGS("Unknown Error Flag");
+  }
+}
+
 bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_struct* conf, int flag)
 {
   // Executes the received command
@@ -135,8 +168,8 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
   u_char payload_buffer[MAX_SEG_SIZE], *u_char_buffer;
   server_chunks_info_struct server_chunks_info;
   split_struct splits[2];
-  int len, i, r_bytes, size_of_payload, split_id;
-
+  int len, i, size_of_payload, split_id;
+  bool folder_path_flag;
   memset(folder_path, 0, sizeof(folder_path));
   memset(&splits, 0, sizeof(splits));
   memset(&server_chunks_info, 0, sizeof(server_chunks_info_struct));
@@ -151,14 +184,25 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
 
   // Since recv_cmd->folder ends with a '/' no need to add it in format
   len = sprintf(folder_path, "%s/%s/%s", conf->server_name, recv_cmd->user.username, recv_cmd->folder);
+
   // Handling case when recv_cmd->folder is '/'
   if (folder_path[len - 1] == ROOT_FOLDER_CHR && folder_path[len - 2] == ROOT_FOLDER_CHR)
     folder_path[--len] = NULL_CHAR;
 
   DEBUGSS("Folder Path from Request", folder_path);
-  // TODO: Check if folder path exists
+
+  // Check if folder path exists
+  folder_path_flag = check_directory_exists(folder_path);
   if (flag == LIST_FLAG) {
 
+    if (!folder_path_flag) {
+      DEBUGS("Folder path doesn't exist and sending back error message");
+      send_int_value_socket(socket, -1);
+      send_error(socket, FOLDER_NOT_FOUND);
+      return false;
+    }
+
+    send_int_value_socket(socket, 1);
     DEBUGS("Reading all the files in the folder path from request");
     get_files_in_folder(folder_path, &server_chunks_info, NULL);
 
@@ -181,7 +225,17 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
   } else if (flag == GET_FLAG) {
 
     // TODO: Handle case when file doesn't exists
+
+    if (!folder_path_flag) {
+      DEBUGS("Folder path doesn't exist and sending back error message");
+      send_int_value_socket(socket, -1);
+      send_error(socket, FOLDER_NOT_FOUND);
+      return false;
+    }
+
+    send_int_value_socket(socket, 1);
     DEBUGS("Reading given file from folder path from request");
+
     get_files_in_folder(folder_path, &server_chunks_info, recv_cmd->file_name);
 
     // Estimate the size of payload to send
@@ -233,6 +287,14 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
 
   } else if (flag == PUT_FLAG) {
 
+    if (!folder_path_flag) {
+      DEBUGS("Folder path doesn't exist and sending back error message");
+      send_int_value_socket(socket, -1);
+      send_error(socket, FOLDER_NOT_FOUND);
+      return false;
+    }
+
+    send_int_value_socket(socket, 1);
     DEBUGS("Reading splits from the socket and writing to the file path");
     for (i = 0; i < 2; i++) {
       // TODO check if the path exits before executing the command
@@ -243,9 +305,19 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
   } else if (flag == MKDIR_FLAG) {
 
     // TODO: Check if parent directory exits before proceeding
+
+    if (folder_path_flag) {
+      DEBUGS("Folder path already exists");
+      send_int_value_socket(socket, -1);
+      send_error(socket, FOLDER_EXISTS);
+      return false;
+    }
+    send_int_value_socket(socket, 1);
     DEBUGS("Creating director");
     create_dfs_directory(folder_path);
   }
+
+  return true;
 }
 
 bool auth_dfs_user(user_struct* user, dfs_conf_struct* conf)
