@@ -2,7 +2,10 @@
 
 char* get_sub_string(char* haystack, char* needle)
 {
-  // Return NULL if either of them is NULL
+  /* Searching for needle in haystack
+   * Returns pointer to the first character where match happens
+   */
+  //Return NULL if either of them is NULL
   if (haystack == NULL || needle == NULL)
     return NULL;
 
@@ -37,7 +40,6 @@ void insert_to_server_chunks_collate_struct(server_chunks_collate_struct* server
 void read_into_split_from_file(char* file_path, split_struct* split)
 {
   FILE* fp;
-  int i;
   struct stat sb;
   long long file_size;
 
@@ -57,6 +59,7 @@ void read_into_split_from_file(char* file_path, split_struct* split)
   if (fread(split->content, sizeof(u_char), split->content_length, fp) < 0)
     perror("Error in reading split to split struct");
 }
+
 int check_file_name_exist(char file_names[][100], char* file_name, int n)
 
 {
@@ -69,24 +72,29 @@ int check_file_name_exist(char file_names[][100], char* file_name, int n)
 
 void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks, char* check_file_name)
 {
-  int i, chunk_num, chunk_idx, j;
-  char temp_folder[strlen(folder) + 2], file_name[MAXCHARBUFF], *temp_ptr_1 = NULL, *temp_ptr_2 = NULL;
+  /* Returns info all the  files in a folder if check_file_name is NULL
+   * Returns info of file named check_file_name if is it specified
+   */
+
+  // TODO: Handle case when folder doesn't exits or check_file_name doesn't exit in specified folder
+  int i, chunk_num, chunk_idx, j, folder_strlen = strlen(folder);
+  char temp_folder[folder_strlen + 2], file_name[MAXCHARBUFF], *temp_ptr_1 = NULL, *temp_ptr_2 = NULL;
 
   memset(temp_folder, 0, sizeof(temp_folder));
   memset(file_name, 0, sizeof(file_name));
   strcpy(temp_folder, folder);
 
-  temp_folder[strlen(folder)] = '.';
-  temp_folder[strlen(folder) + 1] = '*';
+  temp_folder[folder_strlen] = '.';
+  temp_folder[folder_strlen + 1] = '*';
 
-  temp_folder[strlen(folder) + 2] = '\0';
-  DEBUGSS("Changed Path", temp_folder);
+  temp_folder[folder_strlen + 2] = '\0';
+  /*DEBUGSS("Changed Path", temp_folder);*/
   glob_t glob_result;
   if (glob(temp_folder, GLOB_PERIOD, NULL, &glob_result) == GLOB_ERR) {
     perror("Error in Glob");
   }
 
-  DEBUGSN("Num files", glob_result.gl_pathc);
+  /*DEBUGSN("Num files", glob_result.gl_pathc);*/
   assert(glob_result.gl_pathc % 2 == 0);
   server_chunks->chunks = glob_result.gl_pathc / 2 - 1; // removing '.' and '..'
   if (check_file_name != NULL)
@@ -99,19 +107,19 @@ void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks,
     // To remove the case of "." and ".."
     if (strlen(temp_ptr_1) < 3)
       continue;
-    DEBUGSS("File", temp_ptr_1);
+    /*DEBUGSS("File", temp_ptr_1);*/
     temp_ptr_2 = strrchr(temp_ptr_1, '.');
     chunk_num = atoi(temp_ptr_2 + 1);
-    DEBUGSN("Chunk Num", chunk_num);
+    /*DEBUGSN("Chunk Num", chunk_num);*/
     *temp_ptr_2 = NULL_CHAR;
-    DEBUGSS("File Name", temp_ptr_1 + 1);
+    /*DEBUGSS("File Name", temp_ptr_1 + 1);*/
 
     if (check_file_name != NULL && !compare_str(temp_ptr_1 + 1, check_file_name))
       continue;
 
     if (!compare_str(temp_ptr_1 + 1, file_name)) {
       strcpy(file_name, temp_ptr_1 + 1);
-      DEBUGSS("File Name set to", file_name);
+      /*DEBUGSS("File Name set to", file_name);*/
       chunk_idx++;
       j = 0;
     }
@@ -149,6 +157,7 @@ bool compare_str(char* str1, char* str2)
 char* get_token(char* string, char* delim, int offset)
 {
   // Will only parse two token strings offset = 0 gives first string and offset = 1 give second string
+
   char* ptr = get_sub_string_after(string, delim);
   int len;
 
@@ -177,44 +186,57 @@ char* get_sub_string_after(char* haystack, char* needle)
 
 void extract_file_name_and_folder(char* buffer, file_attr_struct* file_attr, int flag)
 {
+  /* Extract file names and folder from the buffer sent and folders end with "/" in all the cases
+   * Saves to remote/local folder/file depending on the flag
+   */
   char* ptr;
   int temp_len;
-  DEBUGSS("Buffer to extract from", buffer);
+  /*DEBUGSS("Buffer to extract from", buffer);*/
   ptr = get_file_name_pointer_from_path(buffer);
 
   if (flag == EXTRACT_LOCAL) {
 
+    // Copy into local variable names
     if (ptr) {
+      // File name exist AFTER a folder path
       strcpy(file_attr->local_file_name, ptr);
       temp_len = ptr - buffer;
       strncpy(file_attr->local_file_folder, buffer, temp_len);
-      DEBUGSS("Local file name", file_attr->local_file_name);
-      DEBUGSS("Local file folder", file_attr->local_file_folder);
+      /*DEBUGSS("Local file name", file_attr->local_file_name);*/
+      /*DEBUGSS("Local file folder", file_attr->local_file_folder);*/
     } else {
+      // File name does not exist AFTER a folder path
       if ((ptr = get_sub_string(buffer, ROOT_FOLDER_STR)) != 0) {
+        // Buffer is only folder name
         strcpy(file_attr->local_file_folder, buffer);
-        DEBUGSS("Local file folder", file_attr->local_file_folder);
+        /*DEBUGSS("Local file folder", file_attr->local_file_folder);*/
       } else {
+        // Buffer is only file name
         strcpy(file_attr->local_file_name, buffer);
-        DEBUGSS("Local file name", file_attr->local_file_name);
+        /*DEBUGSS("Local file name", file_attr->local_file_name);*/
       }
     }
 
   } else if (flag == EXTRACT_REMOTE) {
 
+    // Copy into remote variable names
     if (ptr) {
+      // File name exits AFTER a folder path
       strcpy(file_attr->remote_file_name, ptr);
       temp_len = ptr - buffer;
       strncpy(file_attr->remote_file_folder, buffer, temp_len);
-      DEBUGSS("Remote file name", file_attr->remote_file_name);
-      DEBUGSS("Remote file folder", file_attr->remote_file_folder);
+      /*DEBUGSS("Remote file name", file_attr->remote_file_name);*/
+      /*DEBUGSS("Remote file folder", file_attr->remote_file_folder);*/
     } else {
+      // File name does not exist AFTER a folder path
       if ((ptr = get_sub_string(buffer, ROOT_FOLDER_STR)) != 0) {
+        // Buffer is only folder name
         strcpy(file_attr->remote_file_folder, buffer);
-        DEBUGSS("Remote file folder", file_attr->remote_file_folder);
+        /*DEBUGSS("Remote file folder", file_attr->remote_file_folder);*/
       } else {
+        // Buffer is only file name
         strcpy(file_attr->remote_file_name, buffer);
-        DEBUGSS("Remote file name", file_attr->remote_file_name);
+        /*DEBUGSS("Remote file name", file_attr->remote_file_name);*/
       }
     }
   }
@@ -257,6 +279,10 @@ int get_count_str_chr(char* buffer, char chr)
 }
 char* get_file_name_pointer_from_path(char* buffer)
 {
+
+  /* Assummes buffer is of type folder1/folder2/file_name
+   * Return pointer to the first character of file name
+   */
   char* ptr;
   int buffer_len;
   if (buffer == NULL)
@@ -304,15 +330,15 @@ int get_md5_sum_hash_mod(char* file_path)
   while ((bytes = fread(data, 1, MAXFILEBUFF, in_file)) != 0)
     MD5_Update(&md_context, data, bytes);
   MD5_Final(c, &md_context);
-  fprintf(stderr, "DEBUG: md5sum value of file ");
+  /*fprintf(stderr, "DEBUG: md5sum value of file ");*/
 
   for (i = 0, mod = 0; i < MD5_DIGEST_LENGTH; i++) {
-    fprintf(stderr, "%02x", c[i]);
+    /*fprintf(stderr, "%02x", c[i]);*/
     mod = (mod * 16 + (u_int)c[i]) % NUM_SERVER;
   }
-  fprintf(stderr, " Mod: %d", mod);
-  fprintf(stderr, "\n");
-
+  /*fprintf(stderr, " Mod: %d", mod);*/
+  /*fprintf(stderr, "\n");*/
+  DEBUGSN("MOD:", mod);
   return mod;
 }
 

@@ -16,7 +16,7 @@ kill:
 	fuser -k {10001,10002,10003,10004}/tcp
 
 clear:
-	rm -rf DFS*
+	rm -rf DFS*/*
 
 clean:
 	rm -rf bin
@@ -34,7 +34,7 @@ run:
 dc:
 	rm bin/dfc
 	$(CC) -o bin/dfc -Iheaders headers/*.c dfc.c $(CFLAGS) $(LIBS)
-	gdb -tui bin/dfc --args bin/dfc conf/dfc.conf
+	gdb -tui bin/dfc --args bin/dfc conf/dfc.conf 2> logs/client.log
 
 ds:
 	rm bin/dfs

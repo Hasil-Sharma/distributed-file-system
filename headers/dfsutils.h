@@ -41,6 +41,7 @@ void dfs_command_accept(int, dfs_conf_struct*);
 bool dfs_command_decode_and_auth(char*, const char*, dfs_recv_command_struct*, dfs_conf_struct*);
 bool dfs_command_exec(int, dfs_recv_command_struct*, dfs_conf_struct*, int);
 void create_dfs_directory(char*);
+bool check_directory_exists(char*);
 void dfs_directory_creator(char*, dfs_conf_struct*);
 void print_dfs_conf_struct(dfs_conf_struct*);
 void free_dfs_conf_struct(dfs_conf_struct*);

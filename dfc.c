@@ -17,7 +17,6 @@ int main(int argc, char** argv)
   conf_file = argv[1];
   read_dfc_conf(conf_file, &conf);
   /*print_dfc_conf_struct(&conf);*/
-  setup_dfc_to_dfs_connections(&conn_fds, &conf);
 
   while (true) {
 
@@ -28,6 +27,9 @@ int main(int argc, char** argv)
     fprintf(stdout, ">>> ");
     fgets(buffer, MAXFILEBUFF, stdin);
     buffer_size = strlen(buffer);
+
+    DEBUGS("Setting up connections with remote servers");
+    setup_dfc_to_dfs_connections(&conn_fds, &conf);
 
     if (buffer[buffer_size - 1] == NEW_LINE_CHAR)
       buffer[--buffer_size] = NULL_CHAR;
@@ -57,6 +59,10 @@ int main(int argc, char** argv)
       DEBUGSS("Invalid Command", buffer);
     }
     memset(buffer, 0, sizeof(buffer));
+
+    DEBUGS("Tearing down connections with remote servers");
+    tear_dfc_to_dfs_connections(conn_fds, &conf);
+    free(conn_fds);
   }
   free_dfc_conf_struct(&conf);
   return 0;

@@ -38,10 +38,13 @@ int get_dfs_socket(int port_number)
 }
 bool dfs_command_decode_and_auth(char* buffer, const char* format, dfs_recv_command_struct* recv_cmd, dfs_conf_struct* conf)
 {
+  // All folder ends with '/'
+  // saving values needed to evaluate command
+  //  TODO: Handle the case of receiving "NULL" on client side, no info on servers how to process NULL
   int flag;
   user_struct* user;
   user = &recv_cmd->user;
-  sscanf(buffer, LIST_TEMPLATE,
+  sscanf(buffer, format,
       &flag,
       user->username,
       user->password,
@@ -55,10 +58,11 @@ bool dfs_command_decode_and_auth(char* buffer, const char* format, dfs_recv_comm
 
   return auth_dfs_user(user, conf);
 }
+
 void dfs_command_accept(int socket, dfs_conf_struct* conf)
 {
   char buffer[MAX_SEG_SIZE], temp_buffer[MAX_SEG_SIZE], c;
-  int r_bytes, flag;
+  int r_bytes, flag, command_size;
   user_struct* user;
   dfs_recv_command_struct dfs_recv_command;
 
@@ -72,22 +76,18 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
   user = &dfs_recv_command.user;
 
   // receiving the command
-  //DEBUGS("Wating to recv the command");
-  recv_from_socket(socket, buffer, MAX_SEG_SIZE);
+  // Receiving size of command followd by command
+  recv_int_value_socket(socket, &command_size);
+  recv_from_socket(socket, buffer, command_size);
 
-  c = 'Y';
-  // This to let client know about the non-existent servers
-  //DEBUGS("Sending the Alive ACK");
-  send_to_socket(socket, &c, 1);
-
-  //DEBUGSS("Command Received", buffer);
+  // Received buffer ends with '\n' to assist easy split
   sscanf(buffer, GENERIC_TEMPATE, &dfs_recv_command.flag, temp_buffer);
-  /*//DEBUGSN("Flag", dfs_recv_command.flag);*/
   flag = dfs_recv_command.flag;
 
+  DEBUGS("Decoding and authentication command");
+  // TODO: Handle case when Authentication Fails
   if (flag == LIST_FLAG) {
-
-    //DEBUGS("Command Received is LIST");
+    DEBUGS("Command Received is LIST");
     if (!dfs_command_decode_and_auth(buffer, LIST_TEMPLATE, &dfs_recv_command, conf)) {
       //DEBUGSS("Failed to authenticate", user->username);
     }
@@ -96,7 +96,7 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
 
   } else if (flag == GET_FLAG) {
 
-    //DEBUGS("Command Received is GET");
+    DEBUGS("Command Received is GET");
     if (!dfs_command_decode_and_auth(buffer, GET_TEMPLATE, &dfs_recv_command, conf)) {
       //DEBUGSS("Failed to authenticate", user->username);
     }
@@ -104,7 +104,7 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
     //DEBUGSS("Authenticated", user->username);
   } else if (flag == PUT_FLAG) {
 
-    //DEBUGS("Command Received is PUT");
+    DEBUGS("Command Received is PUT");
     if (!dfs_command_decode_and_auth(buffer, PUT_TEMPLATE, &dfs_recv_command, conf)) {
       //DEBUGSS("Failed to authenticate", user->username);
     }
@@ -112,7 +112,7 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
     //DEBUGSS("Authenticated", user->username);
   } else if (flag == MKDIR_FLAG) {
 
-    //DEBUGS("Command Received is MKDIR");
+    DEBUGS("Command Received is MKDIR");
     if (!dfs_command_decode_and_auth(buffer, MKDIR_TEMPLATE, &dfs_recv_command, conf)) {
       //DEBUGSS("Failed to authenticate", user->username);
     }
@@ -130,60 +130,94 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
 
 bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_struct* conf, int flag)
 {
-  char char_buffer[2 * MAXCHARBUFF], signal;
+  // Executes the received command
+  char folder_path[2 * MAXCHARBUFF], signal;
   u_char payload_buffer[MAX_SEG_SIZE], *u_char_buffer;
   server_chunks_info_struct server_chunks_info;
   split_struct splits[2];
   int len, i, r_bytes, size_of_payload, split_id;
 
-  memset(char_buffer, 0, sizeof(char_buffer));
+  memset(folder_path, 0, sizeof(folder_path));
   memset(&splits, 0, sizeof(splits));
   memset(&server_chunks_info, 0, sizeof(server_chunks_info_struct));
-  len = sprintf(char_buffer, "%s/%s/%s", conf->server_name, recv_cmd->user.username, recv_cmd->folder);
 
+  // Creating username directory in case it doesn't exist already
+  len = sprintf(folder_path, "%s/%s", conf->server_name, recv_cmd->user.username);
+
+  if (!check_directory_exists(folder_path)) {
+    DEBUGSS("Creating user directory:", folder_path);
+    create_dfs_directory(folder_path);
+  }
+
+  // Since recv_cmd->folder ends with a '/' no need to add it in format
+  len = sprintf(folder_path, "%s/%s/%s", conf->server_name, recv_cmd->user.username, recv_cmd->folder);
   // Handling case when recv_cmd->folder is '/'
-  if (char_buffer[len - 1] == ROOT_FOLDER_CHR && char_buffer[len - 2] == ROOT_FOLDER_CHR)
-    char_buffer[--len] = NULL_CHAR;
+  if (folder_path[len - 1] == ROOT_FOLDER_CHR && folder_path[len - 2] == ROOT_FOLDER_CHR)
+    folder_path[--len] = NULL_CHAR;
 
-  //DEBUGSS("Generated folder path", char_buffer);
-
+  DEBUGSS("Folder Path from Request", folder_path);
+  // TODO: Check if folder path exists
   if (flag == LIST_FLAG) {
 
-    get_files_in_folder(char_buffer, &server_chunks_info, NULL);
-    /*print_server_chunks_info_struct(&server_chunks_info);*/
+    DEBUGS("Reading all the files in the folder path from request");
+    get_files_in_folder(folder_path, &server_chunks_info, NULL);
+
+    DEBUGS("Sending files info to the client");
+    // Estimate the size of payload to send
     size_of_payload = INT_SIZE + server_chunks_info.chunks * CHUNK_INFO_STRUCT_SIZE;
+
+    // Sending value of payload to expect
     send_int_value_socket(socket, size_of_payload);
+
+    // encoding server_chunks_info into u_char
     u_char_buffer = (u_char*)malloc(sizeof(u_char) * size_of_payload);
+    memset(u_char_buffer, 0, sizeof(u_char_buffer));
     encode_server_chunks_info_struct_to_buffer(u_char_buffer, &server_chunks_info);
+
+    // Sending the encoded buffer over socket
     send_to_socket(socket, u_char_buffer, size_of_payload);
     free(u_char_buffer);
 
   } else if (flag == GET_FLAG) {
 
-    get_files_in_folder(char_buffer, &server_chunks_info, recv_cmd->file_name);
-    /*print_server_chunks_info_struct(&server_chunks_info);*/
+    // TODO: Handle case when file doesn't exists
+    DEBUGS("Reading given file from folder path from request");
+    get_files_in_folder(folder_path, &server_chunks_info, recv_cmd->file_name);
 
+    // Estimate the size of payload to send
     size_of_payload = INT_SIZE + server_chunks_info.chunks * CHUNK_INFO_STRUCT_SIZE;
+
+    DEBUGS("Sending the file's info to the client");
+    // Sending the size of payload to expect
     send_int_value_socket(socket, size_of_payload);
+
+    // Encoding the server_chunks_info into buffer
     u_char_buffer = (u_char*)malloc(sizeof(u_char) * size_of_payload);
     encode_server_chunks_info_struct_to_buffer(u_char_buffer, &server_chunks_info);
+
+    // Sending the encoded buffer
     send_to_socket(socket, u_char_buffer, size_of_payload);
     free(u_char_buffer);
+
+    DEBUGS("Waiting for signal from client");
     recv_signal(socket, &signal);
-    fprintf(stderr, "Recv sig: %c\n", (char)signal);
 
     if (signal == PROCEED_SIG) {
+      // User wants to fetch the files
+      // Possible that user requests for more than one chunk per server
 
-      //DEBUGS("Client Request for file Split");
+      DEBUGS("Proceeding with sending file split as requested by client");
       while (true) {
+
+        // Recv the split id to send
         recv_int_value_socket(socket, &split_id);
         //DEBUGSN("Split #", split_id);
 
-        sprintf(char_buffer + len, ".%s.%d", recv_cmd->file_name, split_id);
-        //DEBUGSS("Reading split from path", char_buffer);
+        sprintf(folder_path + len, ".%s.%d", recv_cmd->file_name, split_id);
+        //DEBUGSS("Reading split from path", folder_path);
 
         splits->id = split_id;
-        read_into_split_from_file(char_buffer, &splits[0]);
+        read_into_split_from_file(folder_path, &splits[0]);
         /*print_split_struct(splits);*/
         write_split_to_socket_as_stream(socket, splits);
         recv_signal(socket, &signal);
@@ -191,28 +225,26 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
           break;
       }
 
-    } else if (signal == RESET_SIG) {
-
-      //DEBUGS("Client Doesn't want file");
-
     } else {
 
-      //DEBUGS("Unknown Sig!!!");
+      DEBUGS("Client sent RESET SIG not proceeding");
+      // Let the server exit stop the connections
     }
+
   } else if (flag == PUT_FLAG) {
 
-    create_dfs_directory(char_buffer);
+    DEBUGS("Reading splits from the socket and writing to the file path");
     for (i = 0; i < 2; i++) {
-
+      // TODO check if the path exits before executing the command
       memset(payload_buffer, 0, sizeof(payload_buffer));
       write_split_from_socket_as_stream(socket, &splits[i]);
-      //DEBUGS("Split struct read complete");
-      /*DEBUGS("Md5 hash Sum");*/
-      /*print_hash_value(splits[i].content, splits[i].content_length);*/
-      write_split_struct_to_file(&splits[i], char_buffer, recv_cmd->file_name);
+      write_split_struct_to_file(&splits[i], folder_path, recv_cmd->file_name);
     }
   } else if (flag == MKDIR_FLAG) {
-    create_dfs_directory(char_buffer);
+
+    // TODO: Check if parent directory exits before proceeding
+    DEBUGS("Creating director");
+    create_dfs_directory(folder_path);
   }
 }
 
@@ -259,26 +291,18 @@ void insert_dfs_user_conf(char* line, dfs_conf_struct* conf)
   conf->users[i]->password = strdup(ptr);
 }
 
+bool check_directory_exists(char* path)
+{
+  struct stat st;
+  return (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) ? true : false;
+}
+
 void create_dfs_directory(char* path)
 {
   struct stat st;
-  char *folder, *temp;
-  int len;
-  temp = path;
-  len = 0;
-  while (true) {
-    memset(&st, 0, sizeof(st));
-    folder = get_sub_string_after(temp, ROOT_FOLDER_STR);
-    if (!folder)
-      break;
-    len += folder - temp;
-    temp = folder;
-    folder = strndup(path, len);
-    //DEBUGSS("Parsed Folder", folder);
-    if (stat(folder, &st) == -1)
-      mkdir(folder, 0755);
-    free(folder);
-  }
+
+  if (stat(path, &st) == -1)
+    mkdir(path, 0755);
 }
 
 // Creates directory for all the servers with sub directory for each of the user

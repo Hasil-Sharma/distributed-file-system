@@ -31,10 +31,10 @@ int main(int argc, char** argv)
       continue;
     }
 
-    while (true)
-      dfs_command_accept(conn_fd, &conf);
+    dfs_command_accept(conn_fd, &conf);
+    close(conn_fd);
+    DEBUGS("Closed Connection, waiting to accept next");
   }
-  print_dfs_conf_struct(&conf);
   free_dfs_conf_struct(&conf);
   return 0;
 }

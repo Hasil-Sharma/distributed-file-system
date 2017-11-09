@@ -23,9 +23,6 @@ int send_to_socket(int socket, u_char* payload, int size_of_payload)
       perror("Unable to send entire payload via socket");
       exit(1);
     }
-
-    /*if (s_bytes == 0)*/
-    /*break;*/
   }
 
   return s_bytes;
@@ -37,7 +34,7 @@ void send_signal(int* conn_fds, int conn_count, u_char signal)
   for (i = 0; i < conn_count; i++) {
     if (conn_fds[i] == -1)
       continue;
-    fprintf(stderr, "Sending Sig: %c\n", (char)signal);
+    /*fprintf(stderr, "Sending Sig: %c\n", (char)signal);*/
     send_to_socket(conn_fds[i], &signal, sizeof(u_char));
   }
 }
