@@ -1,10 +1,12 @@
 #include "dfsutils.h"
-
+#include <sys/types.h>
+#include <sys/wait.h>
 int main(int argc, char** argv)
 {
+  pid_t pid;
   dfs_conf_struct conf;
   char *server_folder, *file_name = "conf/dfs.conf";
-  int port_number, listen_fd, conn_fd;
+  int port_number, listen_fd, conn_fd, status;
   struct sockaddr_in remote_address;
   socklen_t addr_size = sizeof(struct sockaddr_in);
   mkzero(conf);
@@ -31,8 +33,16 @@ int main(int argc, char** argv)
       continue;
     }
 
-    dfs_command_accept(conn_fd, &conf);
-    close(conn_fd);
+    pid = fork();
+    if (pid != 0) {
+      close(conn_fd);
+      waitpid(-1, &status, WNOHANG);
+    } else {
+      DEBUGSN("In Child process", getpid());
+      dfs_command_accept(conn_fd, &conf);
+      close(conn_fd);
+      break;
+    }
     DEBUGS("Closed Connection, waiting to accept next");
   }
   free_dfs_conf_struct(&conf);
