@@ -9,7 +9,7 @@ void fetch_and_print_error(int socket)
   payload = (u_char*)malloc((payload_size + 1) * sizeof(u_char));
   recv_from_socket(socket, payload, payload_size);
   payload[payload_size] = NULL_CHAR;
-  printf("Error Message: %s\n", (char*)payload);
+  printf(">>> Error Message: %s\n", (char*)payload);
 }
 void send_int_value_socket(int socket, int value)
 {

@@ -97,12 +97,27 @@ bool dfc_command_builder(char* buffer, const char* format, file_attr_struct* fil
     if (strlen(file_name) == 0)
       return false;
 
+    if (strlen(file_attr->local_file_folder) > 1 && !check_directory_exists(file_attr->local_file_folder)) {
+      printf("<<< local directory doesn't exist: %s\n", file_attr->local_file_folder);
+      return false;
+    }
+
   } else if (flag == PUT_FLAG) {
 
     file_folder = (strlen(file_folder) > 0) ? file_folder : ROOT_FOLDER_STR;
     // File name in PUT cannot be null
     if (strlen(file_name) == 0)
       return false;
+
+    if (strlen(file_attr->local_file_folder) > 1 && !check_directory_exists(file_attr->local_file_folder)) {
+      printf("<<< local directory doesn't exist: %s\n", file_attr->local_file_folder);
+      return false;
+    }
+
+    if (!check_file_exists(file_attr->local_file_folder, file_attr->local_file_name)) {
+      printf("<<< local file doesn't exist: %s%s\n", file_attr->local_file_folder, file_attr->local_file_name);
+      return false;
+    }
   } else if (flag == MKDIR_FLAG) {
 
     // File folder name cannot be null
@@ -134,7 +149,7 @@ void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct*
 
   file_attr_struct file_attr;
   char buffer_to_send[MAX_SEG_SIZE];
-
+  bool builder_flag;
   memset(buffer_to_send, 0, sizeof(buffer_to_send));
   memset(&file_attr, 0, sizeof(file_attr));
 
@@ -144,41 +159,36 @@ void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct*
     DEBUGS("Building the command to be send");
     if (flag == LIST_FLAG) {
 
-      if (!dfc_command_builder(buffer_to_send, LIST_TEMPLATE, &file_attr, conf->user, flag)) {
-        fprintf(stderr, "Failed to build command\n");
-      }
+      builder_flag = dfc_command_builder(buffer_to_send, LIST_TEMPLATE, &file_attr, conf->user, flag);
 
     } else if (flag == GET_FLAG) {
 
       if (strlen(file_attr.remote_file_name) == 0) {
         strcpy(file_attr.remote_file_name, file_attr.local_file_name);
       }
-      if (!dfc_command_builder(buffer_to_send, GET_TEMPLATE, &file_attr, conf->user, flag)) {
-        fprintf(stderr, "Failed to build command\n");
-      }
+      builder_flag = dfc_command_builder(buffer_to_send, GET_TEMPLATE, &file_attr, conf->user, flag);
 
     } else if (flag == PUT_FLAG) {
 
       if (strlen(file_attr.remote_file_name) == 0) {
         strcpy(file_attr.remote_file_name, file_attr.local_file_name);
       }
-      if (!dfc_command_builder(buffer_to_send, PUT_TEMPLATE, &file_attr, conf->user, flag)) {
-        fprintf(stderr, "Failed to build command\n");
-      }
+      builder_flag = dfc_command_builder(buffer_to_send, PUT_TEMPLATE, &file_attr, conf->user, flag);
 
     } else if (flag == MKDIR_FLAG) {
 
-      if (!dfc_command_builder(buffer_to_send, MKDIR_TEMPLATE, &file_attr, conf->user, flag)) {
-        fprintf(stderr, "Failed to build command\n");
-      }
+      builder_flag = dfc_command_builder(buffer_to_send, MKDIR_TEMPLATE, &file_attr, conf->user, flag);
     }
 
-    DEBUGS("Creating Connections");
-    create_dfc_to_dfs_connections(conn_fds, conf);
-    DEBUGS("Executing the command on remote servers");
-    dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, &file_attr, flag);
-    DEBUGS("Tearing down connections");
-    tear_dfc_to_dfs_connections(conn_fds, conf);
+    if (!builder_flag) {
+    } else {
+      DEBUGS("Creating Connections");
+      create_dfc_to_dfs_connections(conn_fds, conf);
+      DEBUGS("Executing the command on remote servers");
+      dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, &file_attr, flag, conf);
+      DEBUGS("Tearing down connections");
+      tear_dfc_to_dfs_connections(conn_fds, conf);
+    }
   } else {
     fprintf(stderr, "Failed to validate Command\n");
   }
@@ -241,7 +251,7 @@ bool dfc_command_validator(char* buffer, int flag, file_attr_struct* file_attr)
 
     // if argument doesn't end with a '/' do it explicitly
     if (buffer[buffer_len - 1] != ROOT_FOLDER_CHR) {
-      buffer[buffer_len - 1] = ROOT_FOLDER_CHR;
+      buffer[buffer_len] = ROOT_FOLDER_CHR;
       ++buffer_len;
     }
 
@@ -277,7 +287,7 @@ void send_file_splits(int socket, file_split_struct* file_split, int mod, int se
   int file_piece, i;
   split_struct* split;
 
-  DEBUGSN("Server Idx", server_idx);
+  /*DEBUGSN("Server Idx", server_idx);*/
   for (i = 0; i < CHUNKS_PER_SERVER; i++) {
     memset(payload_buffer, 0, sizeof(payload_buffer));
     file_piece = file_pieces_mapping[mod][server_idx][i];
@@ -381,7 +391,7 @@ void fetch_remote_splits(int* conn_fds, int conn_count, file_split_struct* file_
   send_signal(conn_fds, conn_count, (u_char)RESET_SIG);
 }
 
-void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_attr_struct* attr, int flag)
+void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_attr_struct* attr, int flag, dfc_conf_struct* conf)
 {
   bool send_flag, error_flag;
   char file_path[MAXCHARBUFF];
@@ -455,10 +465,12 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
       DEBUGS("Fetching remote splits from the server");
       fetch_remote_splits(conn_fds, conn_count, &file_split, mod);
 
+      DEBUGS("Decrypting the file splits");
+      encrypt_decrypt_file_split(&file_split, conf->user->password);
       DEBUGS("Combining all the splits and writing into the file");
       // Combine the files on local path
+      // Handles the case where file_split weren't written successfully given folder doesn't exist
       combine_file_from_pieces(attr, &file_split);
-      // TODO: handle the case where file_split weren't written successfully
       /*print_file_split_struct(&file_split);*/
     }
 
@@ -473,6 +485,8 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
     // TODO: handle case where this isn't successfuly
     split_file_to_pieces(file_path, &file_split, conn_count);
 
+    DEBUGS("Encrypting the file splits");
+    encrypt_decrypt_file_split(&file_split, conf->user->password);
     DEBUGS("Sending splits to servers");
 
     for (i = 0; i < conn_count; i++) {
@@ -660,7 +674,7 @@ bool combine_file_from_pieces(file_attr_struct* file_attr, file_split_struct* fi
 
   DEBUGSS("Writing to file", file_name);
   if ((fp = fopen(file_name, "wb")) <= 0) {
-    fprintf(stderr, "Unable to open file: %s\n", file_name);
+    printf("<<< Unable to open file to write: %s", strerror(errno));
     return false;
   }
 

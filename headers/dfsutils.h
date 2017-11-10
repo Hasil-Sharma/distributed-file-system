@@ -17,11 +17,15 @@
 
 #define FOLDER_NOT_FOUND_ERROR "Requested folder does not exist"
 #define FOLDER_EXISTS_ERROR "Requested folder already exists"
+#define FILE_NOT_FOUND_ERROR "Requested file does not exits"
+#define AUTH_FAILED_ERROR "Invalid Username/Password. Please try again"
 enum DFSConstants {
   MAXUSERS = 10,
   MAXCONNECTION = 10,
   FOLDER_NOT_FOUND = 1,
-  FOLDER_EXISTS = 2
+  FOLDER_EXISTS = 2,
+  FILE_NOT_FOUND = 3,
+  AUTH_FAILED = 4
 };
 
 typedef struct dfs_conf_struct {
@@ -47,7 +51,6 @@ void dfs_command_accept(int, dfs_conf_struct*);
 bool dfs_command_decode_and_auth(char*, const char*, dfs_recv_command_struct*, dfs_conf_struct*);
 bool dfs_command_exec(int, dfs_recv_command_struct*, dfs_conf_struct*, int);
 void create_dfs_directory(char*);
-bool check_directory_exists(char*);
 void dfs_directory_creator(char*, dfs_conf_struct*);
 void print_dfs_conf_struct(dfs_conf_struct*);
 void free_dfs_conf_struct(dfs_conf_struct*);

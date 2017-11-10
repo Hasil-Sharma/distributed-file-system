@@ -1,5 +1,33 @@
 #include "utils.h"
 
+bool check_file_exists(char* directory, char* file_name)
+{
+  char file_path_buffer[2 * MAXCHARBUFF];
+  memset(file_path_buffer, 0, sizeof(file_path_buffer));
+
+  sprintf(file_path_buffer, "%s%s", directory, file_name);
+  return (access(file_path_buffer, F_OK) != -1) ? true : false;
+}
+
+bool check_directory_exists(char* path)
+{
+  struct stat st;
+  return (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) ? true : false;
+}
+void encrypt_decrypt_file_split(file_split_struct* file_split, char* key)
+{
+  split_struct* split;
+  int i, j, keylen;
+
+  keylen = strlen(key);
+  for (i = 0; i < file_split->split_count; i++) {
+
+    split = file_split->splits[i];
+    for (j = 0; j < split->content_length; j++) {
+      split->content[j] = split->content[j] ^ key[i % keylen];
+    }
+  }
+}
 char* get_sub_string(char* haystack, char* needle)
 {
   /* Searching for needle in haystack
@@ -70,16 +98,15 @@ int check_file_name_exist(char file_names[][100], char* file_name, int n)
   return -1;
 }
 
-void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks, char* check_file_name)
+bool get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks, char* check_file_name)
 {
   /* Returns info all the  files in a folder if check_file_name is NULL
    * Returns info of file named check_file_name if is it specified
    */
 
-  // TODO: Handle case when folder doesn't exits or check_file_name doesn't exit in specified folder
   int i, chunk_num, chunk_idx, j, folder_strlen = strlen(folder);
   char temp_folder[folder_strlen + 2], file_name[MAXCHARBUFF], *temp_ptr_1 = NULL, *temp_ptr_2 = NULL;
-
+  bool file_found = false;
   memset(temp_folder, 0, sizeof(temp_folder));
   memset(file_name, 0, sizeof(file_name));
   strcpy(temp_folder, folder);
@@ -114,8 +141,11 @@ void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks,
     *temp_ptr_2 = NULL_CHAR;
     /*DEBUGSS("File Name", temp_ptr_1 + 1);*/
 
-    if (check_file_name != NULL && !compare_str(temp_ptr_1 + 1, check_file_name))
+    // Handle case when folder doesn't exits or check_file_name doesn't exit in specified folder
+    // For GET command skip all the other files
+    if (check_file_name != NULL && !compare_str(temp_ptr_1 + 1, check_file_name)) {
       continue;
+    }
 
     if (!compare_str(temp_ptr_1 + 1, file_name)) {
       strcpy(file_name, temp_ptr_1 + 1);
@@ -124,11 +154,11 @@ void get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks,
       j = 0;
     }
 
+    file_found = true;
     strcpy(server_chunks->chunk_info[chunk_idx].file_name, file_name);
     server_chunks->chunk_info[chunk_idx].chunks[j++] = chunk_num;
   }
-
-  /*print_server_chunks_info_struct(server_chunks);*/
+  return file_found;
 }
 
 void print_server_chunks_info_struct(server_chunks_info_struct* server_chunks)

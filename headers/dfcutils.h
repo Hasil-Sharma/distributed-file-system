@@ -45,7 +45,7 @@ int get_dfc_socket(dfc_server_struct*);
 bool dfc_command_validator(char*, int, file_attr_struct*);
 void dfc_command_handler(int*, int, char*, dfc_conf_struct*);
 bool dfc_command_builder(char*, const char*, file_attr_struct*, user_struct*, int);
-void dfc_command_exec(int*, char*, int, file_attr_struct*, int);
+void dfc_command_exec(int*, char*, int, file_attr_struct*, int, dfc_conf_struct*);
 int fetch_remote_file_info(int*, int, server_chunks_collate_struct*);
 void fetch_remote_splits(int*, int, file_split_struct*, int);
 void create_dfc_to_dfs_connections(int*, dfc_conf_struct*);
