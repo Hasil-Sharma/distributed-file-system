@@ -416,6 +416,8 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
   }
 
   for (i = 0, error_flag = false; i < conn_count; i++) {
+    if (conn_fds[i] == -1)
+      continue;
     recv_int_value_socket(conn_fds[i], &c);
     if (c == -1) {
       DEBUGS("Some Error has occured");
@@ -448,7 +450,7 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
     if (!check_complete((&server_chunks_collate)->chunks[0])) {
       // In case file is incomplete
       // Send RESET SIG to server to terminate the connections
-      printf("File is incomplete\n");
+      printf("<<< File is incomplete\n");
 
       DEBUGS("Sending REST_SIG to server");
       send_signal(conn_fds, conn_count, (u_char)RESET_SIG);

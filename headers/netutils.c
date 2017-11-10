@@ -61,7 +61,7 @@ int recv_from_socket(int socket, u_char* payload, int size_of_payload)
 
   while (r_bytes != size_of_payload) {
     if ((r_bytes += recv(socket, payload + r_bytes, size_of_payload - r_bytes, 0)) < 0) {
-      perror("Unable to receive entire payload via socket");
+      DEBUGSS("Unable to receive entire payload via socket", strerror(errno));
       exit(1);
     }
 
