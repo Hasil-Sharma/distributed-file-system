@@ -217,6 +217,12 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
     send_to_socket(socket, u_char_buffer, size_of_payload);
     free(u_char_buffer);
 
+    size_of_payload = get_folders_in_folder(folder_path, &u_char_buffer);
+
+    send_int_value_socket(socket, size_of_payload);
+    send_to_socket(socket, u_char_buffer, size_of_payload);
+
+    free(u_char_buffer);
   } else if (flag == GET_FLAG) {
 
     if (!folder_path_flag) {

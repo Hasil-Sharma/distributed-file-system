@@ -1,5 +1,6 @@
 #include "debug.h"
 #include <assert.h>
+#include <dirent.h>
 #include <errno.h>
 #include <glob.h>
 #include <openssl/md5.h>
@@ -8,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #ifndef UTILS_H
 #define UTILS_H
@@ -81,6 +83,7 @@ bool check_complete(bool*);
 int check_file_name_exist(char file_names[][100], char*, int);
 char* get_file_name_pointer_from_path(char*);
 bool get_files_in_folder(char*, server_chunks_info_struct*, char*);
+int get_folders_in_folder(char*, u_char**);
 void extract_file_name_and_folder(char*, file_attr_struct*, int);
 void print_chunks_info_struct(chunk_info_struct*);
 void print_server_chunks_info_struct(server_chunks_info_struct*);

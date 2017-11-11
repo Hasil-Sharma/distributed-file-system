@@ -433,8 +433,12 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
     DEBUGS("Fetching remote file(s) info from all the servers");
     mod = fetch_remote_file_info(conn_fds, conn_count, &server_chunks_collate);
 
-    DEBUGS("Printing the file names with status");
+    DEBUGS("Printing the file names and folders with status");
     get_output_list_command(&server_chunks_collate);
+
+    // Fetching and printing folder names
+    fetch_remote_dir_info(conn_fds, conn_count);
+
   } else if (flag == GET_FLAG) {
 
     // Fetch the file into from remote server, server_chunks_collate only has info of one file across all servers
@@ -502,6 +506,25 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
   }
 }
 
+void fetch_remote_dir_info(int* conn_fds, int conn_count)
+{
+  int i, payload_size;
+  bool flag = false;
+  u_char* payload;
+  for (i = 0; i < conn_count; i++) {
+    if (conn_fds[i] == -1)
+      continue;
+
+    recv_int_value_socket(conn_fds[i], &payload_size);
+
+    payload = (u_char*)malloc(payload_size * sizeof(u_char));
+    recv_from_socket(conn_fds[i], payload, payload_size);
+
+    flag = (!flag) ? printf("%s", payload) : flag;
+
+    free(payload);
+  }
+}
 bool check_complete(bool* flag_array)
 {
   // Checks if chunks of file available are enough to reconstruct the file

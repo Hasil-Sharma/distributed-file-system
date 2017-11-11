@@ -28,6 +28,35 @@ void encrypt_decrypt_file_split(file_split_struct* file_split, char* key)
     }
   }
 }
+
+int get_folders_in_folder(char* folder_path, u_char** payload_pointer)
+{
+  DIR* dp;
+  struct dirent* ep;
+  u_char buffer[MAXCHARBUFF];
+  int buffer_len = 0;
+  dp = opendir(folder_path);
+
+  if (dp != NULL) {
+    while (ep = readdir(dp))
+      if (ep->d_type == DT_DIR && strlen(ep->d_name) > 2) {
+        memcpy(buffer + buffer_len, ep->d_name, strlen(ep->d_name));
+        buffer_len += strlen(ep->d_name);
+        buffer[++buffer_len - 1] = '/';
+        buffer[++buffer_len - 1] = '\n';
+        DEBUGSS("Directory", ep->d_name);
+      }
+
+    (void)closedir(dp);
+
+    *payload_pointer = (u_char*)malloc(buffer_len * sizeof(u_char));
+    memcpy(*payload_pointer, buffer, buffer_len);
+  } else {
+    DEBUGSS("Couldn't open directory to find folders", strerror(errno));
+  }
+
+  return buffer_len;
+}
 char* get_sub_string(char* haystack, char* needle)
 {
   /* Searching for needle in haystack

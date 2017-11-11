@@ -3,7 +3,7 @@ CC = gcc
 INCLUDE = /usr/lib
 LIBS = -lcrypto -lssl
 OBJS = 
-CFLAGS = -g -Wunused
+CFLAGS = -g -Wall -Wextra
 all: clean dfs dfc start run
 
 dfs:
