@@ -1,4 +1,3 @@
-#include "debug.h"
 #include "netutils.h"
 #include "utils.h"
 #include <arpa/inet.h>

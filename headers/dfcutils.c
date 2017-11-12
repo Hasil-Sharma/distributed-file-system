@@ -108,6 +108,14 @@ bool dfc_command_builder(char* buffer, const char* format, file_attr_struct* fil
       return false;
     }
 
+    if (compare_str(file_attr->local_file_folder, ROOT_FOLDER_STR)) {
+      file_attr->local_file_folder[0] = NULL_CHAR;
+    }
+
+    if (strlen(file_attr->local_file_name) == 0) {
+      strcpy(file_attr->local_file_name, file_attr->remote_file_name);
+    }
+
   } else if (flag == PUT_FLAG) {
 
     file_folder = (strlen(file_folder) > 0) ? file_folder : ROOT_FOLDER_STR;
@@ -721,10 +729,9 @@ bool combine_file_from_pieces(file_attr_struct* file_attr, file_split_struct* fi
 
   memset(file_name, 0, sizeof(file_name));
   sprintf(file_name, "%s%s", file_attr->local_file_folder, file_attr->local_file_name);
-
   DEBUGSS("Writing to file", file_name);
   if ((fp = fopen(file_name, "wb")) <= 0) {
-    printf("<<< Unable to open file to write: %s", strerror(errno));
+    printf("<<< Unable to open file to write: %s\n", strerror(errno));
     return false;
   }
 
