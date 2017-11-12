@@ -3,7 +3,7 @@ CC = gcc
 INCLUDE = /usr/lib
 LIBS = -lcrypto -lssl
 OBJS = 
-CFLAGS = -g -Wall -Wextra
+CFLAGS = -g 
 all: clean dfs dfc start run
 
 dfs:
@@ -44,5 +44,5 @@ ds:
 client:
 	rm bin/dfc
 	$(CC) -o bin/dfc -Iheaders headers/*.c dfc.c $(CFLAGS) $(LIBS)
-	bin/dfc conf/dfc.conf
+	bin/dfc conf/dfc.conf 2> logs/dfc.log
 

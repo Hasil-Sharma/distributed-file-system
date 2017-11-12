@@ -136,8 +136,8 @@ bool get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks,
   int i, chunk_num, chunk_idx, j, folder_strlen = strlen(folder);
   char temp_folder[folder_strlen + 2], file_name[MAXCHARBUFF], *temp_ptr_1 = NULL, *temp_ptr_2 = NULL;
   bool file_found = false;
-  memset(temp_folder, 0, sizeof(temp_folder));
-  memset(file_name, 0, sizeof(file_name));
+  memset(temp_folder, 0, (folder_strlen + 2) * sizeof(char));
+  memset(file_name, 0, MAXCHARBUFF * sizeof(char));
   strcpy(temp_folder, folder);
 
   temp_folder[folder_strlen] = '.';
@@ -157,6 +157,7 @@ bool get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks,
     server_chunks->chunks = 1;
   server_chunks->chunk_info = (chunk_info_struct*)malloc(server_chunks->chunks * sizeof(chunk_info_struct));
 
+  memset(server_chunks->chunk_info, 0, server_chunks->chunks * sizeof(chunk_info_struct));
   for (i = 0, chunk_idx = -1; i < glob_result.gl_pathc; i++) {
     temp_ptr_1 = get_file_name_pointer_from_path(glob_result.gl_pathv[i]);
     chunk_num = 0;
@@ -187,6 +188,8 @@ bool get_files_in_folder(char* folder, server_chunks_info_struct* server_chunks,
     strcpy(server_chunks->chunk_info[chunk_idx].file_name, file_name);
     server_chunks->chunk_info[chunk_idx].chunks[j++] = chunk_num;
   }
+
+  globfree(&glob_result);
   return file_found;
 }
 
@@ -418,9 +421,10 @@ void print_hash_value(u_char* buffer, int length)
 
 void free_file_split_struct(file_split_struct* file_split)
 {
+  int i;
   free(file_split->file_name);
-  while (--file_split->split_count) {
-    free_split_struct(file_split->splits[file_split->split_count]);
+  for (i = 0; i < file_split->split_count; i++) {
+    free_split_struct(file_split->splits[i]);
   }
 }
 

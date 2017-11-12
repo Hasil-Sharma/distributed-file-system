@@ -6,10 +6,13 @@ void fetch_and_print_error(int socket)
   u_char* payload;
   recv_int_value_socket(socket, &payload_size);
 
-  payload = (u_char*)malloc((payload_size + 1) * sizeof(u_char));
+  if ((payload = (u_char*)malloc((payload_size + 1) * sizeof(u_char))) == NULL) {
+    DEBUGSS("Failed to malloc", strerror(errno));
+  }
   recv_from_socket(socket, payload, payload_size);
   payload[payload_size] = NULL_CHAR;
-  printf(">>> Error Message: %s\n", (char*)payload);
+  printf("<<< Error Message: %s\n", (char*)payload);
+  free(payload);
 }
 void send_int_value_socket(int socket, int value)
 {
@@ -134,7 +137,9 @@ void decode_server_chunks_info_struct_from_buffer(u_char* buffer, server_chunks_
   int i;
   decode_int_from_uchar(buffer, &server_chunks_info->chunks);
 
-  server_chunks_info->chunk_info = (chunk_info_struct*)malloc(sizeof(chunk_info_struct) * server_chunks_info->chunks);
+  if ((server_chunks_info->chunk_info = (chunk_info_struct*)malloc(sizeof(chunk_info_struct) * server_chunks_info->chunks)) == NULL) {
+    DEBUGSS("Failed to malloc", strerror(errno));
+  }
   for (i = 0; i < server_chunks_info->chunks; i++) {
     decode_chunk_info_struct_from_buffer(buffer + INT_SIZE + i * CHUNK_INFO_STRUCT_SIZE, &server_chunks_info->chunk_info[i]);
   }
@@ -188,7 +193,7 @@ void write_split_from_socket_as_stream(int socket, split_struct* split)
   u_char payload_buffer[MAX_SEG_SIZE];
   int content_bytes_recv, bytes_to_recv_next;
 
-  memset(payload_buffer, 0, sizeof(payload_buffer));
+  memset(payload_buffer, 0, MAX_SEG_SIZE * sizeof(u_char));
 
   recv_from_socket(socket, payload_buffer, MAX_SEG_SIZE);
 
@@ -201,7 +206,9 @@ void write_split_from_socket_as_stream(int socket, split_struct* split)
     //DEBUGSN("Split ID", split->id);
     //DEBUGSN("Content Length", split->content_length);
 
-    split->content = (u_char*)malloc(split->content_length * sizeof(u_char));
+    if ((split->content = (u_char*)malloc(split->content_length * sizeof(u_char))) == NULL) {
+      DEBUGSS("Failed to malloc", strerror(errno));
+    }
 
     bytes_to_recv_next = split->content_length;
     bytes_to_recv_next = (bytes_to_recv_next < MAX_SEG_SIZE - 9) ? bytes_to_recv_next : MAX_SEG_SIZE - 9;
@@ -242,7 +249,9 @@ void decode_split_struct_from_buffer(u_char* buffer, split_struct* split)
   }
   split->id = (int)buffer[0];
   split->content_length = (int)buffer[1];
-  split->content = (u_char*)malloc(split->content_length * sizeof(u_char));
+  if ((split->content = (u_char*)malloc(split->content_length * sizeof(u_char))) == NULL) {
+    DEBUGSS("Failed to malloc", strerror(errno));
+  }
   ptr = &buffer[2];
   for (i = 0; i < split->content_length; i++)
     split->content[i] = ptr[i];

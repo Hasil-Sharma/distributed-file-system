@@ -78,8 +78,12 @@ void dfs_command_accept(int socket, dfs_conf_struct* conf)
   memset(temp_buffer, 0, sizeof(temp_buffer));
   memset(&dfs_recv_command, 0, sizeof(dfs_recv_command));
 
-  dfs_recv_command.user.username = (char*)malloc(MAXCHARBUFF * sizeof(char));
-  dfs_recv_command.user.password = (char*)malloc(MAXCHARBUFF * sizeof(char));
+  if ((dfs_recv_command.user.username = (char*)malloc(MAXCHARBUFF * sizeof(char))) == NULL) {
+    DEBUGSS("Failed to malloc", strerror(errno));
+  }
+  if ((dfs_recv_command.user.password = (char*)malloc(MAXCHARBUFF * sizeof(char))) == NULL) {
+    DEBUGSS("Failed to malloc", strerror(errno));
+  }
 
   user = &dfs_recv_command.user;
 
@@ -133,7 +137,9 @@ void send_error_helper(int socket, const char* message)
   u_char* payload;
 
   payload_size = strlen(message);
-  payload = (u_char*)malloc(payload_size * sizeof(u_char));
+  if ((payload = (u_char*)malloc(payload_size * sizeof(u_char))) == NULL) {
+    DEBUGSS("Failed to malloc", strerror(errno));
+  }
   memcpy(payload, message, payload_size);
   send_int_value_socket(socket, payload_size);
   send_to_socket(socket, payload, payload_size);
@@ -165,8 +171,9 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
   split_struct splits[2];
   int len, i, size_of_payload, split_id;
   bool folder_path_flag, file_flag;
-  memset(folder_path, 0, sizeof(folder_path));
-  memset(&splits, 0, sizeof(splits));
+
+  memset(folder_path, 0, 2 * MAXCHARBUFF * sizeof(char));
+  memset(&splits, 0, 2 * sizeof(split_struct));
   memset(&server_chunks_info, 0, sizeof(server_chunks_info_struct));
 
   // Creating username directory in case it doesn't exist already
@@ -209,8 +216,10 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
     send_int_value_socket(socket, size_of_payload);
 
     // encoding server_chunks_info into u_char
-    u_char_buffer = (u_char*)malloc(sizeof(u_char) * size_of_payload);
-    memset(u_char_buffer, 0, sizeof(u_char_buffer));
+    if ((u_char_buffer = (u_char*)malloc(sizeof(u_char) * size_of_payload)) == NULL) {
+      DEBUGSS("Failed to malloc", strerror(errno));
+    }
+    memset(u_char_buffer, 0, size_of_payload * sizeof(u_char));
     encode_server_chunks_info_struct_to_buffer(u_char_buffer, &server_chunks_info);
 
     // Sending the encoded buffer over socket
@@ -223,6 +232,7 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
     send_to_socket(socket, u_char_buffer, size_of_payload);
 
     free(u_char_buffer);
+    free(server_chunks_info.chunk_info);
   } else if (flag == GET_FLAG) {
 
     if (!folder_path_flag) {
@@ -236,7 +246,7 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
 
     // Handle case when file doesn't exists
     file_flag = get_files_in_folder(folder_path, &server_chunks_info, recv_cmd->file_name);
-    print_server_chunks_info_struct(&server_chunks_info);
+    /*print_server_chunks_info_struct(&server_chunks_info);*/
     if (!file_flag) {
       DEBUGS("File doesn't exist and sending back error message");
       send_int_value_socket(socket, -1);
@@ -253,7 +263,11 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
     send_int_value_socket(socket, size_of_payload);
 
     // Encoding the server_chunks_info into buffer
-    u_char_buffer = (u_char*)malloc(sizeof(u_char) * size_of_payload);
+    if ((u_char_buffer = (u_char*)malloc(sizeof(u_char) * size_of_payload)) == NULL) {
+      DEBUGSS("Failed to malloc", strerror(errno));
+    }
+
+    memset(u_char_buffer, 0, size_of_payload * sizeof(u_char));
     encode_server_chunks_info_struct_to_buffer(u_char_buffer, &server_chunks_info);
 
     // Sending the encoded buffer
@@ -262,7 +276,7 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
 
     DEBUGS("Waiting for signal from client");
     recv_signal(socket, &signal);
-
+    free(server_chunks_info.chunk_info);
     if (signal == PROCEED_SIG) {
       // User wants to fetch the files
       // Possible that user requests for more than one chunk per server
@@ -282,6 +296,8 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
         /*print_split_struct(splits);*/
         write_split_to_socket_as_stream(socket, splits);
         recv_signal(socket, &signal);
+
+        free_split_struct(&splits[0]);
         if (signal == RESET_SIG)
           break;
       }
@@ -305,9 +321,10 @@ bool dfs_command_exec(int socket, dfs_recv_command_struct* recv_cmd, dfs_conf_st
     DEBUGS("Reading splits from the socket and writing to the file path");
     for (i = 0; i < 2; i++) {
       // Checked if the path exits before executing the command
-      memset(payload_buffer, 0, sizeof(payload_buffer));
+      memset(payload_buffer, 0, MAX_SEG_SIZE * sizeof(u_char));
       write_split_from_socket_as_stream(socket, &splits[i]);
       write_split_struct_to_file(&splits[i], folder_path, recv_cmd->file_name);
+      free_split_struct(&splits[i]);
     }
   } else if (flag == MKDIR_FLAG) {
 

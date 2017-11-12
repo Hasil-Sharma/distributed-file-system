@@ -11,7 +11,9 @@ void setup_dfc_to_dfs_connections(int** conn_fds, dfc_conf_struct* conf)
 {
   /* Setup dfc to dfs TCP Connections, after allocating the number of servers connections
    */
-  (*conn_fds) = (int*)malloc(conf->server_count * sizeof(int));
+  if (((*conn_fds) = (int*)malloc(conf->server_count * sizeof(int))) == NULL) {
+    DEBUGSS("Failed to malloc", strerror(errno));
+  }
   create_dfc_to_dfs_connections(*conn_fds, conf);
 }
 
@@ -26,19 +28,23 @@ void tear_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
     /*DEBUGSN("Disconnected from Server", i + 1);*/
   }
 }
-void create_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
+bool create_dfc_to_dfs_connections(int* conn_fds, dfc_conf_struct* conf)
 {
   /* Creating a socket connection and adding timeout of 1 sec on recv
    */
   int i;
+  bool connection_flag = false;
   for (i = 0; i < conf->server_count; i++) {
     conn_fds[i] = get_dfc_socket(conf->servers[i]);
     if (conn_fds[i] == -1) {
       /*DEBUGSS("Couldn't Connect to Server", conf->servers[i]->name);*/
       continue;
     }
+    connection_flag = true;
     /*DEBUGSS("Connected to Server", conf->servers[i]->name);*/
   }
+
+  return connection_flag;
 }
 
 int get_dfc_socket(dfc_server_struct* server)
@@ -149,7 +155,7 @@ void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct*
 
   file_attr_struct file_attr;
   char buffer_to_send[MAX_SEG_SIZE];
-  bool builder_flag;
+  bool builder_flag, connection_flag;
   memset(buffer_to_send, 0, sizeof(buffer_to_send));
   memset(&file_attr, 0, sizeof(file_attr));
 
@@ -183,11 +189,15 @@ void dfc_command_handler(int* conn_fds, int flag, char* buffer, dfc_conf_struct*
     if (!builder_flag) {
     } else {
       DEBUGS("Creating Connections");
-      create_dfc_to_dfs_connections(conn_fds, conf);
-      DEBUGS("Executing the command on remote servers");
-      dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, &file_attr, flag, conf);
-      DEBUGS("Tearing down connections");
-      tear_dfc_to_dfs_connections(conn_fds, conf);
+      connection_flag = create_dfc_to_dfs_connections(conn_fds, conf);
+      if (connection_flag) {
+        DEBUGS("Executing the command on remote servers");
+        dfc_command_exec(conn_fds, buffer_to_send, conf->server_count, &file_attr, flag, conf);
+        DEBUGS("Tearing down connections");
+        tear_dfc_to_dfs_connections(conn_fds, conf);
+      } else {
+        printf("<<< Unable to Connect to any server\n");
+      }
     }
   } else {
     fprintf(stderr, "Failed to validate Command\n");
@@ -325,8 +335,10 @@ int fetch_remote_file_info(int* conn_fds, int conn_count, server_chunks_collate_
     /*DEBUGS("Error in fetching remote file info");*/
     /*fetch_and_print_error(conn_fds[i]);*/
     /*}*/
-    payload = (u_char*)malloc(sizeof(u_char) * payload_size);
-    memset(payload, 0, sizeof(payload));
+    if ((payload = (u_char*)malloc(sizeof(u_char) * payload_size)) == NULL) {
+      DEBUGSS("Failed to malloc", strerror(errno));
+    }
+    memset(payload, 0, payload_size * sizeof(u_char));
 
     // Recv the packet from server
     recv_from_socket(conn_fds[i], payload, payload_size);
@@ -337,7 +349,6 @@ int fetch_remote_file_info(int* conn_fds, int conn_count, server_chunks_collate_
 
     // Inserting decoded strct into collate struct
     insert_to_server_chunks_collate_struct(server_chunks_collate, &server_chunks_info);
-
     // Finding mod corresponding to the chunk received
     chunk_info = server_chunks_info.chunk_info;
     for (j = 0; mod < 0; j++) {
@@ -348,6 +359,7 @@ int fetch_remote_file_info(int* conn_fds, int conn_count, server_chunks_collate_
 
     // Freeing up memory allocated earlier
     free(payload);
+    free(server_chunks_info.chunk_info);
   }
 
   return mod;
@@ -381,7 +393,9 @@ void fetch_remote_splits(int* conn_fds, int conn_count, file_split_struct* file_
     send_int_value_socket(socket, split_id);
 
     file_split->split_count++;
-    file_split->splits[split_id - 1] = (split_struct*)malloc(sizeof(split_struct));
+    if ((file_split->splits[split_id - 1] = (split_struct*)malloc(sizeof(split_struct))) == NULL) {
+      DEBUGSS("Failed to malloc", strerror(errno));
+    }
     write_split_from_socket_as_stream(socket, file_split->splits[split_id - 1]);
 
     if (flag)
@@ -399,7 +413,7 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
   file_split_struct file_split;
   server_chunks_collate_struct server_chunks_collate;
   memset(file_path, 0, sizeof(file_path));
-  memset(&server_chunks_collate, 0, sizeof(server_chunks_collate));
+  memset(&server_chunks_collate, 0, sizeof(server_chunks_collate_struct));
   memset(&file_split, 0, sizeof(file_split_struct));
 
   // Sending Command to Servers
@@ -411,7 +425,7 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
   if (send_flag)
     DEBUGS("Command sent over to the server successfully");
   else {
-    perror("Unable to send command");
+    DEBUGSS("Unable to send command", strerror(errno));
     return;
   }
 
@@ -437,6 +451,7 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
     get_output_list_command(&server_chunks_collate);
 
     // Fetching and printing folder names
+
     fetch_remote_dir_info(conn_fds, conn_count);
 
   } else if (flag == GET_FLAG) {
@@ -478,6 +493,7 @@ void dfc_command_exec(int* conn_fds, char* buffer_to_send, int conn_count, file_
       // Handles the case where file_split weren't written successfully given folder doesn't exist
       combine_file_from_pieces(attr, &file_split);
       /*print_file_split_struct(&file_split);*/
+      free_file_split_struct(&file_split);
     }
 
   } else if (flag == PUT_FLAG) {
@@ -517,9 +533,12 @@ void fetch_remote_dir_info(int* conn_fds, int conn_count)
 
     recv_int_value_socket(conn_fds[i], &payload_size);
 
-    payload = (u_char*)malloc(payload_size * sizeof(u_char));
+    if ((payload = (u_char*)malloc((payload_size + 1) * sizeof(u_char))) == NULL) {
+      DEBUGSS("Failed to malloc", strerror(errno));
+    }
     recv_from_socket(conn_fds[i], payload, payload_size);
 
+    payload[payload_size] = NULL_CHAR;
     flag = (!flag) ? printf("%s", payload) : flag;
 
     free(payload);
@@ -609,7 +628,9 @@ void read_dfc_conf(char* file_path, dfc_conf_struct* conf)
 bool check_dfc_server_struct(dfc_server_struct** server)
 {
   if (*server == NULL) {
-    *server = (dfc_server_struct*)malloc(sizeof(dfc_server_struct));
+    if ((*server = (dfc_server_struct*)malloc(sizeof(dfc_server_struct))) == NULL) {
+      DEBUGSS("Failed to malloc", strerror(errno));
+    }
     return false;
   }
   return true;
@@ -673,11 +694,15 @@ bool split_file_to_pieces(char* file_path, file_split_struct* file_split, int n)
   rem_size = file_size % n;   // Last nth split will have split_size + rem_size number of bytes
   file_split->split_count = 0;
   for (i = 0; i < n; i++) {
-    file_split->splits[i] = (split_struct*)malloc(sizeof(split_struct));
+    if ((file_split->splits[i] = (split_struct*)malloc(sizeof(split_struct))) == NULL) {
+      DEBUGSS("Failed to malloc", strerror(errno));
+    }
     split = file_split->splits[i];
     split->id = i + 1;
     split->content_length = (i != n - 1) ? split_size : split_size + rem_size;
-    split->content = (u_char*)malloc(split->content_length * sizeof(u_char));
+    if ((split->content = (u_char*)malloc(split->content_length * sizeof(u_char))) == NULL) {
+      DEBUGSS("Failed to malloc", strerror(errno));
+    }
     fread(split->content, sizeof(u_char), split->content_length, fp);
     file_split->split_count++;
   }

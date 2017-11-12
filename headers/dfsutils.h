@@ -15,9 +15,9 @@
 #ifndef DFSUTILS_H
 #define DFSUTILS_H
 
-#define FOLDER_NOT_FOUND_ERROR "Requested folder does not exist"
-#define FOLDER_EXISTS_ERROR "Requested folder already exists"
-#define FILE_NOT_FOUND_ERROR "Requested file does not exits"
+#define FOLDER_NOT_FOUND_ERROR "Requested folder does not exists on server"
+#define FOLDER_EXISTS_ERROR "Requested folder already exists on server"
+#define FILE_NOT_FOUND_ERROR "Requested file does not exists on server"
 #define AUTH_FAILED_ERROR "Invalid Username/Password. Please try again"
 enum DFSConstants {
   MAXUSERS = 10,

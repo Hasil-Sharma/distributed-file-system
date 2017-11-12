@@ -1,3 +1,4 @@
+#include "debug.h"
 #include "netutils.h"
 #include "utils.h"
 #include <arpa/inet.h>
@@ -49,7 +50,7 @@ void dfc_command_exec(int*, char*, int, file_attr_struct*, int, dfc_conf_struct*
 void fetch_remote_dir_info(int*, int);
 int fetch_remote_file_info(int*, int, server_chunks_collate_struct*);
 void fetch_remote_splits(int*, int, file_split_struct*, int);
-void create_dfc_to_dfs_connections(int*, dfc_conf_struct*);
+bool create_dfc_to_dfs_connections(int*, dfc_conf_struct*);
 void get_output_list_command(server_chunks_collate_struct*);
 bool auth_dfc_to_dfs_connections(int*, dfc_conf_struct*);
 void setup_dfc_to_dfs_connections(int**, dfc_conf_struct*);
