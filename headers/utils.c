@@ -1,5 +1,10 @@
 #include "utils.h"
 
+#ifdef __APPLE__
+#define GLOB_PERIOD (1 << 7) /* Leading `.' can be matched by metachars. */
+#define GLOB_ONLYDIR (1 << 13) /* Match only directories. */
+#endif
+
 bool check_file_exists(char* directory, char* file_name)
 {
   char file_path_buffer[2 * MAXCHARBUFF];
